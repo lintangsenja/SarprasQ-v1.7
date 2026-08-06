@@ -24,13 +24,17 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CalendarMonth
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.FilterList
+import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material.icons.filled.PictureAsPdf
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.TableChart
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -77,6 +81,7 @@ import com.lintang.sarprasq.ui.theme.PastelButterYellowDark
 import com.lintang.sarprasq.ui.theme.PastelCardBorder
 import com.lintang.sarprasq.ui.theme.PastelMint
 import com.lintang.sarprasq.ui.theme.PastelMintDark
+import com.lintang.sarprasq.ui.theme.PastelMintLight
 import com.lintang.sarprasq.ui.theme.PastelPeach
 import com.lintang.sarprasq.ui.theme.PastelPeachDark
 import com.lintang.sarprasq.ui.theme.PastelSkyBlue
@@ -86,6 +91,7 @@ import com.lintang.sarprasq.ui.theme.PastelSurface
 import com.lintang.sarprasq.ui.theme.TextPrimary
 import com.lintang.sarprasq.ui.theme.TextSecondary
 import com.lintang.sarprasq.ui.viewmodel.SarprasViewModel
+import com.lintang.sarprasq.util.ExportedFileResult
 import com.lintang.sarprasq.util.ReportCategory
 import com.lintang.sarprasq.util.ReportExporter
 import com.lintang.sarprasq.util.ReportFilter
@@ -174,8 +180,11 @@ fun ReportExporterScreen(viewModel: SarprasViewModel) {
         endDate = endDate
     )
 
+    var exportedFileResult by remember { mutableStateOf<ExportedFileResult?>(null) }
+    var showExportSuccessDialog by remember { mutableStateOf(false) }
+
     fun triggerExportPdf() {
-        ReportExporter.exportToPdf(
+        val result = ReportExporter.exportToPdf(
             context = context,
             filter = filterObj,
             schoolName = schoolName,
@@ -188,10 +197,14 @@ fun ReportExporterScreen(viewModel: SarprasViewModel) {
             peminjamanList = allPeminjaman,
             suratList = filteredSurat
         )
+        if (result != null) {
+            exportedFileResult = result
+            showExportSuccessDialog = true
+        }
     }
 
     fun triggerExportExcel() {
-        ReportExporter.exportToExcel(
+        val result = ReportExporter.exportToExcel(
             context = context,
             filter = filterObj,
             schoolName = schoolName,
@@ -204,10 +217,14 @@ fun ReportExporterScreen(viewModel: SarprasViewModel) {
             peminjamanList = allPeminjaman,
             suratList = filteredSurat
         )
+        if (result != null) {
+            exportedFileResult = result
+            showExportSuccessDialog = true
+        }
     }
 
     fun triggerExportWord() {
-        ReportExporter.exportToWord(
+        val result = ReportExporter.exportToWord(
             context = context,
             filter = filterObj,
             schoolName = schoolName,
@@ -220,6 +237,10 @@ fun ReportExporterScreen(viewModel: SarprasViewModel) {
             peminjamanList = allPeminjaman,
             suratList = filteredSurat
         )
+        if (result != null) {
+            exportedFileResult = result
+            showExportSuccessDialog = true
+        }
     }
 
     Column(
@@ -696,6 +717,22 @@ fun ReportExporterScreen(viewModel: SarprasViewModel) {
                 }
             )
         }
+
+        if (showExportSuccessDialog && exportedFileResult != null) {
+            val currentResult = exportedFileResult!!
+            ExportSuccessDialog(
+                exportedFile = currentResult,
+                onDismiss = { showExportSuccessDialog = false },
+                onOpenFile = {
+                    showExportSuccessDialog = false
+                    ReportExporter.openFile(context, currentResult.uri, currentResult.mimeType)
+                },
+                onShareFile = {
+                    showExportSuccessDialog = false
+                    ReportExporter.shareFile(context, currentResult.uri, currentResult.mimeType, currentResult.fileName)
+                }
+            )
+        }
     }
 }
 
@@ -971,4 +1008,137 @@ private fun parseAnyDate(dateStr: String): java.util.Date? {
         } catch (_: Exception) {}
     }
     return null
+}
+
+@Composable
+fun ExportSuccessDialog(
+    exportedFile: ExportedFileResult,
+    onDismiss: () -> Unit,
+    onOpenFile: () -> Unit,
+    onShareFile: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        shape = RoundedCornerShape(20.dp),
+        containerColor = PastelSurface,
+        title = {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(40.dp)
+                        .clip(CircleShape)
+                        .background(PastelMintLight),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.CheckCircle,
+                        contentDescription = null,
+                        tint = PastelMintDark,
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
+                Column {
+                    Text(
+                        text = "Dokumen Berhasil Dibuat",
+                        fontSize = 15.5.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = TextPrimary
+                    )
+                    Text(
+                        text = "Laporan siap digunakan",
+                        fontSize = 11.5.sp,
+                        color = TextSecondary
+                    )
+                }
+            }
+        },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 4.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = PastelSkyBlueContainer),
+                    shape = RoundedCornerShape(12.dp),
+                    border = BorderStroke(1.dp, PastelCardBorder),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = when {
+                                    exportedFile.fileName.endsWith(".pdf", ignoreCase = true) -> Icons.Default.PictureAsPdf
+                                    exportedFile.fileName.endsWith(".xlsx", ignoreCase = true) -> Icons.Default.TableChart
+                                    else -> Icons.Default.Description
+                                },
+                                contentDescription = null,
+                                tint = PastelSkyBlueDark,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = exportedFile.fileName,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = TextPrimary,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(
+                            text = "Tersimpan di: Folder Downloads",
+                            fontSize = 11.sp,
+                            color = TextSecondary
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = onOpenFile,
+                colors = ButtonDefaults.buttonColors(containerColor = PastelSkyBlueDark),
+                shape = RoundedCornerShape(10.dp)
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.OpenInNew,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp),
+                        tint = Color.White
+                    )
+                    Text("Buka File", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                }
+            }
+        },
+        dismissButton = {
+            OutlinedButton(
+                onClick = onShareFile,
+                shape = RoundedCornerShape(10.dp),
+                border = BorderStroke(1.dp, PastelSkyBlueDark)
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Share,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp),
+                        tint = PastelSkyBlueDark
+                    )
+                    Text("Bagikan", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = PastelSkyBlueDark)
+                }
+            }
+        }
+    )
 }

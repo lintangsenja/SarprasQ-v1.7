@@ -54,6 +54,13 @@ data class ReportFilter(
         }
 }
 
+data class ExportedFileResult(
+    val file: File,
+    val uri: Uri,
+    val mimeType: String,
+    val fileName: String
+)
+
 object ReportExporter {
 
     private fun formatRupiah(value: Any?): String {
@@ -78,15 +85,17 @@ object ReportExporter {
     }
 
     // --- FILE SAVING & INTENT LAUNCHING HELPER ---
-    private fun saveAndOpenFile(
+    fun saveFile(
         context: Context,
         fileName: String,
         mimeType: String,
         writeContent: (FileOutputStream) -> Unit
-    ) {
-        try {
-            // Save to Downloads folder or App external storage cache
+    ): ExportedFileResult? {
+        return try {
             val downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+            if (!downloadsDir.exists()) {
+                downloadsDir.mkdirs()
+            }
             val file = File(downloadsDir, fileName)
             val fos = FileOutputStream(file)
             writeContent(fos)
@@ -96,32 +105,43 @@ object ReportExporter {
             val authority = "${context.packageName}.fileprovider"
             val uri: Uri = FileProvider.getUriForFile(context, authority, file)
 
-            Toast.makeText(context, "File berhasil disimpan di Downloads:\n$fileName", Toast.LENGTH_LONG).show()
+            Toast.makeText(context, "File berhasil disimpan di Downloads:\n$fileName", Toast.LENGTH_SHORT).show()
+            ExportedFileResult(file, uri, mimeType, fileName)
+        } catch (e: Exception) {
+            Log.e("ReportExporter", "Error saving file: ${e.message}", e)
+            Toast.makeText(context, "Gagal mengunduh file: ${e.localizedMessage}", Toast.LENGTH_SHORT).show()
+            null
+        }
+    }
 
+    fun openFile(context: Context, uri: Uri, mimeType: String) {
+        try {
             val intent = Intent(Intent.ACTION_VIEW).apply {
                 setDataAndType(uri, mimeType)
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }
-
-            if (intent.resolveActivity(context.packageManager) != null) {
-                context.startActivity(intent)
-            } else {
-                // If no direct handler, offer chooser/share intent
-                val shareIntent = Intent(Intent.ACTION_SEND).apply {
-                    type = mimeType
-                    putExtra(Intent.EXTRA_STREAM, uri)
-                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                }
-                val chooser = Intent.createChooser(shareIntent, "Buka atau Bagikan Laporan").apply {
-                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                }
-                context.startActivity(chooser)
-            }
-
+            context.startActivity(intent)
         } catch (e: Exception) {
-            Log.e("ReportExporter", "Error saving or opening file: ${e.message}", e)
-            Toast.makeText(context, "Gagal mengunduh file: ${e.localizedMessage}", Toast.LENGTH_SHORT).show()
+            Log.e("ReportExporter", "Error opening file: ${e.message}", e)
+            Toast.makeText(context, "Tidak ada aplikasi default untuk membuka file ini. Silakan periksa folder Downloads.", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    fun shareFile(context: Context, uri: Uri, mimeType: String, fileName: String = "Laporan") {
+        try {
+            val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                type = mimeType
+                putExtra(Intent.EXTRA_STREAM, uri)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            val chooser = Intent.createChooser(shareIntent, "Bagikan $fileName").apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            context.startActivity(chooser)
+        } catch (e: Exception) {
+            Log.e("ReportExporter", "Error sharing file: ${e.message}", e)
+            Toast.makeText(context, "Gagal membagikan file: ${e.localizedMessage}", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -140,10 +160,10 @@ object ReportExporter {
         ruangList: List<Ruang>,
         peminjamanList: List<PeminjamanMakro>,
         suratList: List<SuratArsip>
-    ) {
+    ): ExportedFileResult? {
         val fileName = "Laporan_SarprasQ_${filter.category.name}_${getFileTimestamp()}.pdf"
 
-        saveAndOpenFile(context, fileName, "application/pdf") { fos ->
+        return saveFile(context, fileName, "application/pdf") { fos ->
             val pdfDocument = PdfDocument()
             val pageInfo = PdfDocument.PageInfo.Builder(595, 842, 1).create() // A4 Size in points
             val page = pdfDocument.startPage(pageInfo)
@@ -468,10 +488,10 @@ object ReportExporter {
         ruangList: List<Ruang>,
         peminjamanList: List<PeminjamanMakro>,
         suratList: List<SuratArsip>
-    ) {
+    ): ExportedFileResult? {
         val fileName = "Laporan_SarprasQ_${filter.category.name}_${getFileTimestamp()}.xlsx"
 
-        saveAndOpenFile(context, fileName, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet") { fos ->
+        return saveFile(context, fileName, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet") { fos ->
             val zipOut = ZipOutputStream(fos)
 
             // 1. [Content_Types].xml
@@ -646,10 +666,10 @@ object ReportExporter {
         ruangList: List<Ruang>,
         peminjamanList: List<PeminjamanMakro>,
         suratList: List<SuratArsip>
-    ) {
+    ): ExportedFileResult? {
         val fileName = "Laporan_SarprasQ_${filter.category.name}_${getFileTimestamp()}.docx"
 
-        saveAndOpenFile(context, fileName, "application/vnd.openxmlformats-officedocument.wordprocessingml.document") { fos ->
+        return saveFile(context, fileName, "application/vnd.openxmlformats-officedocument.wordprocessingml.document") { fos ->
             val zipOut = ZipOutputStream(fos)
 
             // 1. [Content_Types].xml

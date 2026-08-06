@@ -2,32 +2,34 @@ package com.lintang.sarprasq.ui.theme
 
 import androidx.compose.ui.graphics.Color
 
-// Colorful Pastel Theme Colors
-val PastelBackground = Color(0xFFF8FBFC) // Putih bersih / Off-white
-val PastelSurface = Color(0xFFFFFFFF)
-val PastelCardBorder = Color(0xFFE2E8F0)
+// Colorful Pastel Theme Colors - Soft, rich, non-white background and harmonious pastel palette
+val PastelBackground = Color(0xFFD6E3F0) // Clearly non-white soft pastel ice-blue background
+val PastelSurface = Color(0xFFFFFFFF)    // Pure White Floating Cards
+val PastelCardBorder = Color(0xFFBACEE0) // Soft Harmonious Pastel Border
 
 // Pastel Accent Colors
-val PastelSkyBlue = Color(0xFFAED6F1)       // #AED6F1 (Primary Accent)
-val PastelSkyBlueDark = Color(0xFF2980B9)
-val PastelSkyBlueContainer = Color(0xFFEBF5FB)
+val PastelSkyBlue = Color(0xFFA6D4F2)       // Soft Sky Blue Accent
+val PastelSkyBlueDark = Color(0xFF1F6B9C)   // Deep Sky Blue Text/Icons
+val PastelSkyBlueContainer = Color(0xFFE3F2FD) // Soft Sky Blue Container Card
 
-val PastelMint = Color(0xFFA3E4D7)          // #A3E4D7 (Mint)
-val PastelMintLight = Color(0xFFD4EFDF)     // #D4EFDF (Green / Finished Badge)
-val PastelMintDark = Color(0xFF27AE60)
+val PastelMint = Color(0xFFA1E3D4)          // Soft Mint Accent
+val PastelMintLight = Color(0xFFD6F5EC)     // Soft Mint Container
+val PastelMintDark = Color(0xFF1E8449)      // Rich Mint Text/Icons
 
-val PastelPeach = Color(0xFFFADBD8)         // #FADBD8 (Pink / Urgent Badge)
-val PastelPeachDark = Color(0xFFC0392B)
+val PastelPeach = Color(0xFFFAD1CC)         // Soft Peach Accent
+val PastelPeachDark = Color(0xFFB73225)     // Rich Peach Dark
+val PastelPeachContainer = Color(0xFFFDEEEB) // Soft Peach Container Card
 
-val PastelButterYellow = Color(0xFFFCF3CF)   // #FCF3CF (Yellow / Pending Badge)
-val PastelButterYellowDark = Color(0xFFD35400)
+val PastelButterYellow = Color(0xFFFAF0BE)   // Soft Warm Cream Butter
+val PastelButterYellowDark = Color(0xFFB76E00) // Rich Amber/Gold
+val PastelButterYellowContainer = Color(0xFFFFFDE8) // Soft Butter Container Card
 
-val PastelLavender = Color(0xFFD7BDE2)      // #D7BDE2 (Lavender)
-val PastelLavenderDark = Color(0xFF7D3C98)
-val PastelLavenderContainer = Color(0xFFF4ECF7)
+val PastelLavender = Color(0xFFE0C9EF)      // Soft Lilac/Lavender Accent
+val PastelLavenderDark = Color(0xFF6C3483)  // Rich Lavender Dark
+val PastelLavenderContainer = Color(0xFFF5EEFA) // Soft Lavender Container Card
 
 // Text Colors
-val TextPrimary = Color(0xFF2C3E50)
-val TextSecondary = Color(0xFF5D6D7E)
-val TextMuted = Color(0xFF95A5A6)
+val TextPrimary = Color(0xFF1E293B)    // Deep Slate Primary Text
+val TextSecondary = Color(0xFF475569)  // Medium Slate Secondary Text
+val TextMuted = Color(0xFF64748B)      // Soft Slate Muted Text
 

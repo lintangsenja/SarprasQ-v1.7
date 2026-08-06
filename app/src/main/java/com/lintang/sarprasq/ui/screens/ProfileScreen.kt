@@ -100,12 +100,14 @@ fun ProfileScreen(
     var showEditProfileDialog by remember { mutableStateOf(false) }
     var showLogoutConfirmDialog by remember { mutableStateOf(false) }
     var selectedBitmapForCrop by remember { mutableStateOf<Bitmap?>(null) }
+    var selectedUriForPhoto by remember { mutableStateOf<Uri?>(null) }
 
     // Launcher gallery picker
     val photoPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickVisualMedia()
     ) { uri: Uri? ->
         if (uri != null) {
+            selectedUriForPhoto = uri
             try {
                 val inputStream = context.contentResolver.openInputStream(uri)
                 val bitmap = BitmapFactory.decodeStream(inputStream)
@@ -369,6 +371,7 @@ fun ProfileScreen(
                 selectedBitmapForCrop = null
                 scope.launch {
                     isUploadingProfilePhoto = true
+                    uploadStatusMsg = "Memproses foto profil..."
                     val (downloadUrl, resultInfo) = ImageCompressor.processAndUploadProfileBitmap(
                         context = context,
                         bitmap = bitmapToUpload,
@@ -376,12 +379,58 @@ fun ProfileScreen(
                     )
                     if (downloadUrl.isNotBlank()) {
                         viewModel.updateProfileImage(downloadUrl)
-                        Toast.makeText(context, "Foto profil berhasil diunggah ke Storage!", Toast.LENGTH_SHORT).show()
+                        val msg = if (downloadUrl.startsWith("http")) {
+                            "Foto profil terunggah ke Firebase Storage!"
+                        } else {
+                            "Foto profil tersimpan secara lokal!"
+                        }
+                        Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                    } else {
+                        Toast.makeText(context, "Gagal memproses foto profil", Toast.LENGTH_SHORT).show()
                     }
                     isUploadingProfilePhoto = false
                 }
             },
-            onDismiss = { selectedBitmapForCrop = null }
+            onUseOriginal = {
+                val uriToUpload = selectedUriForPhoto
+                val bitmapToUpload = selectedBitmapForCrop
+                selectedBitmapForCrop = null
+                scope.launch {
+                    isUploadingProfilePhoto = true
+                    uploadStatusMsg = "Memproses foto profil..."
+                    val (downloadUrl, resultInfo) = if (uriToUpload != null) {
+                        ImageCompressor.processAndUploadProfilePhoto(
+                            context = context,
+                            imageUri = uriToUpload,
+                            onStatusUpdate = { status -> uploadStatusMsg = status }
+                        )
+                    } else if (bitmapToUpload != null) {
+                        ImageCompressor.processAndUploadProfileBitmap(
+                            context = context,
+                            bitmap = bitmapToUpload,
+                            onStatusUpdate = { status -> uploadStatusMsg = status }
+                        )
+                    } else {
+                        Pair("", null)
+                    }
+                    if (downloadUrl.isNotBlank()) {
+                        viewModel.updateProfileImage(downloadUrl)
+                        val msg = if (downloadUrl.startsWith("http")) {
+                            "Foto profil terunggah ke Firebase Storage!"
+                        } else {
+                            "Foto profil tersimpan secara lokal!"
+                        }
+                        Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                    } else {
+                        Toast.makeText(context, "Gagal memproses foto profil", Toast.LENGTH_SHORT).show()
+                    }
+                    isUploadingProfilePhoto = false
+                }
+            },
+            onDismiss = {
+                selectedBitmapForCrop = null
+                selectedUriForPhoto = null
+            }
         )
     }
 

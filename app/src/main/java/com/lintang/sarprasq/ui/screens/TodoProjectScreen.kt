@@ -612,6 +612,44 @@ private data class CalendarWeekSpan(
     val startColDayNumber: Int
 )
 
+// --- PALETTE HARMONIS UNTUK VARIASI ITEM GANDA DIBAR KALENDER ---
+private val calendarTaskPalettes = listOf(
+    Color(0xFF5E35B1), // Deep Violet
+    Color(0xFF00838F), // Deep Teal / Cyan
+    Color(0xFF1565C0), // Royal Blue
+    Color(0xFFE65100), // Amber / Orange
+    Color(0xFFAD1457), // Magenta / Crimson
+    Color(0xFF6A1B9A), // Amethyst Purple
+    Color(0xFFD84315), // Deep Coral
+    Color(0xFF0288D1), // Cerulean Blue
+    Color(0xFFF57F17), // Deep Yellow / Gold
+    Color(0xFF8E24AA), // Vibrant Purple
+    Color(0xFF00796B), // Sea Teal
+    Color(0xFFC2185B)  // Dark Pink
+)
+
+private fun getTaskCalendarProgressInfo(task: ProjectTask): Pair<Int, String> {
+    val isLunas = task.isCompleted ||
+            task.sisaKekuranganProgres <= 0.00001 ||
+            (task.bobotPersen > 0 && task.totalProgres >= task.bobotPersen) ||
+            task.totalProgres >= 100.0
+
+    if (isLunas) {
+        return Pair(100, "100% - LUNAS")
+    }
+    if (task.type.equals("Harian", ignoreCase = true)) {
+        return if (task.isCompleted) Pair(100, "100% - LUNAS") else Pair(0, "0%")
+    }
+    val relativePct = if (task.bobotPersen > 0) {
+        ((task.totalProgres / task.bobotPersen) * 100.0).coerceIn(0.0, 100.0)
+    } else {
+        task.totalProgres.coerceIn(0.0, 100.0)
+    }
+    val rounded = relativePct.toInt()
+    val labelStr = if (rounded >= 100) "100% - LUNAS" else "$rounded%"
+    return Pair(if (rounded >= 100) 100 else rounded, labelStr)
+}
+
 // --- INTERACTIVE MONTHLY CALENDAR COMPOSABLE ---
 @Composable
 fun InteractiveMonthlyCalendar(
@@ -852,9 +890,6 @@ fun InteractiveMonthlyCalendar(
                                     val isSelected = selectedDay == dayNumber
 
                                     val dayTasks = tasks.filter { isDateInTaskRange(dateStr, it.startDate, it.endDate) }
-                                    val hasHarian = dayTasks.any { it.type.equals("Harian", ignoreCase = true) }
-                                    val hasProyek = dayTasks.any { it.type.equals("Proyek Revitalisasi", ignoreCase = true) }
-                                    val hasRehab = dayTasks.any { it.type.equals("Rehab Intern", ignoreCase = true) }
 
                                     Box(
                                         modifier = Modifier
@@ -891,34 +926,21 @@ fun InteractiveMonthlyCalendar(
                                                 }
                                             )
 
-                                            // Badge dots container for Ringkas mode or quick indicator
+                                            // Badge dots container for Ringkas mode
                                             if (calendarViewMode == "Ringkas" && dayTasks.isNotEmpty()) {
                                                 Row(
                                                     horizontalArrangement = Arrangement.spacedBy(2.dp),
                                                     verticalAlignment = Alignment.CenterVertically
                                                 ) {
-                                                    if (hasHarian) {
+                                                    dayTasks.take(3).forEachIndexed { dotIdx, dTask ->
+                                                        val (dPct, _) = getTaskCalendarProgressInfo(dTask)
+                                                        val isDLunas = dPct >= 100
+                                                        val dotColor = if (isDLunas) Color(0xFF2E7D32) else calendarTaskPalettes[kotlin.math.abs(dTask.id * 31 + dotIdx) % calendarTaskPalettes.size]
                                                         Box(
                                                             modifier = Modifier
                                                                 .size(4.dp)
                                                                 .clip(CircleShape)
-                                                                .background(if (isSelected) Color.White else Color(0xFF00796B))
-                                                        )
-                                                    }
-                                                    if (hasProyek) {
-                                                        Box(
-                                                            modifier = Modifier
-                                                                .size(4.dp)
-                                                                .clip(CircleShape)
-                                                                .background(if (isSelected) PastelButterYellow else Color(0xFF5E35B1))
-                                                        )
-                                                    }
-                                                    if (hasRehab) {
-                                                        Box(
-                                                            modifier = Modifier
-                                                                .size(4.dp)
-                                                                .clip(CircleShape)
-                                                                .background(if (isSelected) Color.White else Color(0xFFE65100))
+                                                                .background(if (isSelected) Color.White else dotColor)
                                                         )
                                                     }
                                                 }
@@ -939,21 +961,27 @@ fun InteractiveMonthlyCalendar(
                             val visibleSpans = weekSpans.take(maxVisibleBars)
                             val hiddenCount = weekSpans.size - maxVisibleBars
 
-                            visibleSpans.forEach { span ->
+                            visibleSpans.forEachIndexed { spanIdx, span ->
                                 val task = span.task
                                 val isProyek = task.type.equals("Proyek Revitalisasi", ignoreCase = true)
                                 val isRehab = task.type.equals("Rehab Intern", ignoreCase = true)
 
-                                val barBg = when {
-                                    isProyek -> Color(0xFF5E35B1) // Deep Violet
-                                    isRehab -> Color(0xFFE65100)  // Dark Amber / Orange
-                                    else -> Color(0xFF00796B)     // Deep Teal Green
-                                }
+                                val (progressPct, progressLabelText) = getTaskCalendarProgressInfo(task)
+                                val isLunas = progressPct >= 100 || progressLabelText.contains("LUNAS")
 
-                                val label = when {
-                                    isProyek -> "${task.title.ifBlank { task.subKategori.ifBlank { "Proyek Revitalisasi" } }} (${task.totalProgres.toInt()}%)"
-                                    isRehab -> "${task.title.ifBlank { task.subKategori.ifBlank { "Rehab Intern" } }} (${task.totalProgres.toInt()}%)"
-                                    else -> task.title.ifBlank { task.notes.ifBlank { "Kegiatan Harian" } }
+                                val titleStr = task.title.ifBlank {
+                                    task.subKategori.ifBlank {
+                                        if (isProyek) "Proyek Revitalisasi" else if (isRehab) "Rehab Intern" else "Kegiatan Harian"
+                                    }
+                                }
+                                val label = "$titleStr ($progressLabelText)"
+
+                                // Distinct multi-item color palette: Assign dynamic color based on task ID and index unless Lunas (Emerald Green)
+                                val barBg = if (isLunas) {
+                                    Color(0xFF2E7D32) // Emerald Green for LUNAS / Completed
+                                } else {
+                                    val colorIndex = kotlin.math.abs(task.id * 31 + spanIdx * 17 + task.title.hashCode()) % calendarTaskPalettes.size
+                                    calendarTaskPalettes[colorIndex]
                                 }
 
                                 val startCol = span.startCol
@@ -1007,12 +1035,13 @@ fun InteractiveMonthlyCalendar(
                                             } else {
                                                 Icon(
                                                     imageVector = when {
+                                                        isLunas -> Icons.Default.CheckCircle
                                                         isProyek -> Icons.Default.TrendingUp
                                                         isRehab -> Icons.Default.Assignment
                                                         else -> Icons.Default.CheckCircle
                                                     },
                                                     contentDescription = null,
-                                                    tint = Color.White.copy(alpha = 0.9f),
+                                                    tint = Color.White.copy(alpha = 0.95f),
                                                     modifier = Modifier.size(11.dp)
                                                 )
                                                 Spacer(modifier = Modifier.width(3.dp))
@@ -1069,25 +1098,33 @@ fun InteractiveMonthlyCalendar(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(modifier = Modifier.size(12.dp, 8.dp).clip(RoundedCornerShape(3.dp)).background(Color(0xFF00796B)))
+                    Box(modifier = Modifier.size(10.dp, 8.dp).clip(RoundedCornerShape(3.dp)).background(Color(0xFF00796B)))
                     Spacer(modifier = Modifier.width(4.dp))
-                    Text("Kegiatan Harian", fontSize = 10.sp, fontWeight = FontWeight.Medium, color = TextSecondary)
+                    Text("Harian", fontSize = 9.5.sp, fontWeight = FontWeight.Medium, color = TextSecondary)
                 }
 
-                Spacer(modifier = Modifier.width(12.dp))
+                Spacer(modifier = Modifier.width(8.dp))
 
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(modifier = Modifier.size(12.dp, 8.dp).clip(RoundedCornerShape(3.dp)).background(Color(0xFF5E35B1)))
+                    Box(modifier = Modifier.size(10.dp, 8.dp).clip(RoundedCornerShape(3.dp)).background(Color(0xFF5E35B1)))
                     Spacer(modifier = Modifier.width(4.dp))
-                    Text("Proyek Revitalisasi", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color(0xFF5E35B1))
+                    Text("Proyek (Multi-Warna)", fontSize = 9.5.sp, fontWeight = FontWeight.Medium, color = TextSecondary)
                 }
 
-                Spacer(modifier = Modifier.width(12.dp))
+                Spacer(modifier = Modifier.width(8.dp))
 
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(modifier = Modifier.size(12.dp, 8.dp).clip(RoundedCornerShape(3.dp)).background(Color(0xFFE65100)))
+                    Box(modifier = Modifier.size(10.dp, 8.dp).clip(RoundedCornerShape(3.dp)).background(Color(0xFFE65100)))
                     Spacer(modifier = Modifier.width(4.dp))
-                    Text("Rehab Intern", fontSize = 10.sp, fontWeight = FontWeight.Medium, color = TextSecondary)
+                    Text("Rehab", fontSize = 9.5.sp, fontWeight = FontWeight.Medium, color = TextSecondary)
+                }
+
+                Spacer(modifier = Modifier.width(8.dp))
+
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(modifier = Modifier.size(10.dp, 8.dp).clip(RoundedCornerShape(3.dp)).background(Color(0xFF2E7D32)))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("Lunas (100%)", fontSize = 9.5.sp, fontWeight = FontWeight.Bold, color = Color(0xFF2E7D32))
                 }
             }
         }

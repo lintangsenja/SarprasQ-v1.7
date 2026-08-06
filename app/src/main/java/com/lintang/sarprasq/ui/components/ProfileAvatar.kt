@@ -10,6 +10,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -22,6 +23,7 @@ import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.lintang.sarprasq.ui.theme.PastelSkyBlue
 import com.lintang.sarprasq.ui.theme.PastelSkyBlueDark
+import java.io.File
 
 @Composable
 fun ProfileAvatar(
@@ -41,8 +43,16 @@ fun ProfileAvatar(
         contentAlignment = Alignment.Center
     ) {
         if (!imagePath.isNullOrBlank()) {
+            val imageModel: Any = remember(imagePath) {
+                if (imagePath.startsWith("http://") || imagePath.startsWith("https://") || imagePath.startsWith("content://")) {
+                    imagePath
+                } else {
+                    val file = File(imagePath)
+                    if (file.exists()) file else imagePath
+                }
+            }
             AsyncImage(
-                model = imagePath,
+                model = imageModel,
                 contentDescription = "Foto / Logo Profil",
                 contentScale = ContentScale.Crop,
                 modifier = Modifier

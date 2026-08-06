@@ -145,6 +145,7 @@ class SarprasViewModel(application: Application) : AndroidViewModel(application)
         val database = SarprasDatabase.getDatabase(application, viewModelScope)
         repository = SarprasRepository(database.sarprasDao())
         loadBackupHistoryRecords()
+        repository.startFirestoreRealtimeSync(viewModelScope)
 
         // Fresh Start Purge: Ensure all legacy sample/dummy operational data is purged once
         val isFreshStartDone = prefs.getBoolean("fresh_start_done_v3", false)
@@ -1392,9 +1393,11 @@ class SarprasViewModel(application: Application) : AndroidViewModel(application)
 
     fun toggleTaskCompletion(task: ProjectTask) {
         viewModelScope.launch {
+            val newCompleted = !task.isCompleted
+            val targetWeight = if (task.bobotPersen > 0) task.bobotPersen else 100.0
             val updated = task.copy(
-                isCompleted = !task.isCompleted,
-                totalProgres = if (!task.isCompleted) task.bobotPersen else 0.0
+                isCompleted = newCompleted,
+                totalProgres = if (newCompleted) targetWeight else 0.0
             )
             repository.updateProjectTask(updated)
         }
@@ -1407,8 +1410,9 @@ class SarprasViewModel(application: Application) : AndroidViewModel(application)
         dateStr: String = SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()).format(Date())
     ) {
         viewModelScope.launch {
-            val newTotal = (task.totalProgres + addedProgress).coerceAtMost(100.0)
-            val isCompleteNow = newTotal >= task.bobotPersen || (task.bobotPersen > 0 && (task.bobotPersen - newTotal) <= 0.00001) || newTotal >= 100.0
+            val targetWeight = if (task.bobotPersen > 0) task.bobotPersen else 100.0
+            val newTotal = (task.totalProgres + addedProgress).coerceAtMost(targetWeight)
+            val isCompleteNow = newTotal >= targetWeight || (targetWeight - newTotal) <= 0.00001 || newTotal >= 100.0
             val df = java.text.DecimalFormat("0.0######", java.text.DecimalFormatSymbols(Locale.US))
             val percentFormatted = df.format(addedProgress)
             val newLogEntry = "$dateStr: +$percentFormatted% - ${notes.ifBlank { "Progres harian" }}"

@@ -9,10 +9,13 @@ import android.net.Uri
 import android.os.Build
 import android.util.Log
 import com.google.firebase.storage.FirebaseStorage
+import com.google.firebase.storage.StorageMetadata
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
+import java.io.File
+import java.io.FileOutputStream
 import java.util.Locale
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
@@ -48,6 +51,18 @@ object ImageCompressor {
     const val MAX_PROOF_SIZE_BYTES = 400 * 1024 // 400 KB untuk foto bukti
     const val MAX_PROFILE_SIZE_BYTES = 5 * 1024 * 1024 // 5 MB untuk foto profil
 
+    private fun getStorageInstance(): FirebaseStorage {
+        return try {
+            FirebaseStorage.getInstance("gs://sarpras-134d7.firebasestorage.app")
+        } catch (e: Exception) {
+            try {
+                FirebaseStorage.getInstance("gs://sarpras-134d7.appspot.com")
+            } catch (e2: Exception) {
+                FirebaseStorage.getInstance()
+            }
+        }
+    }
+
     /**
      * Memproses foto bukti (max 400 KB, aspect ratio & EXIF rotasi terjaga)
      * lalu mengunggah ke Firebase Storage untuk menghasilkan URL publik yang dapat diakses seluruh pengguna.
@@ -71,10 +86,11 @@ object ImageCompressor {
         try {
             val timestamp = System.currentTimeMillis()
             val fileName = "bukti_${timestamp}.jpg"
-            val storageInstance = FirebaseStorage.getInstance()
+            val storageInstance = getStorageInstance()
             val storageRef = storageInstance.reference.child("$folder/$fileName")
 
-            val uploadTask = storageRef.putBytes(compressed.bytes)
+            val metadata = StorageMetadata.Builder().setContentType("image/jpeg").build()
+            val uploadTask = storageRef.putBytes(compressed.bytes, metadata)
 
             val downloadUrl = suspendCancellableCoroutine<String> { continuation ->
                 uploadTask.addOnSuccessListener {
@@ -118,18 +134,19 @@ object ImageCompressor {
 
         val sizeMbStr = String.format(Locale.US, "%.2f", profileResult.sizeInBytes / (1024.0 * 1024.0))
         if (!profileResult.compressionApplied) {
-            onStatusUpdate("Foto profil <= 5 MB ($sizeMbStr MB). Kualitas asli dipertahankan. Mengunggah ke Firebase Storage...")
+            onStatusUpdate("Foto profil <= 5 MB ($sizeMbStr MB, kualitas asli). Mengunggah ke server...")
         } else {
-            onStatusUpdate("Foto profil > 5 MB dikompresi adaptif ke $sizeMbStr MB. Mengunggah ke Firebase Storage...")
+            onStatusUpdate("Foto profil > 5 MB dikompresi adaptif ke $sizeMbStr MB. Mengunggah ke server...")
         }
 
         try {
             val timestamp = System.currentTimeMillis()
             val fileName = "profil_${timestamp}.jpg"
-            val storageInstance = FirebaseStorage.getInstance()
+            val storageInstance = getStorageInstance()
             val storageRef = storageInstance.reference.child("foto_profil/$fileName")
 
-            val uploadTask = storageRef.putBytes(profileResult.bytes)
+            val metadata = StorageMetadata.Builder().setContentType("image/jpeg").build()
+            val uploadTask = storageRef.putBytes(profileResult.bytes, metadata)
 
             val downloadUrl = suspendCancellableCoroutine<String> { continuation ->
                 uploadTask.addOnSuccessListener {
@@ -144,12 +161,14 @@ object ImageCompressor {
             }
 
             Log.i(TAG, "Foto profil terunggah ke Firebase Storage: $downloadUrl ($sizeMbStr MB)")
-            onStatusUpdate("✓ Foto profil terunggah ($sizeMbStr MB). URL publik aktif.")
+            onStatusUpdate("✓ Terunggah ke Firebase Storage ($sizeMbStr MB)")
             Pair(downloadUrl, profileResult)
         } catch (e: Exception) {
             Log.e(TAG, "Profile Storage Upload Offline / Exception: ${e.message}")
-            onStatusUpdate("⚠ Foto profil ($sizeMbStr MB). Storage Offline. Menyimpan URL lokal.")
-            Pair(imageUri.toString(), profileResult)
+            val localPath = saveProfileImageLocally(context, profileResult.bytes)
+            val pathToUse = localPath ?: imageUri.toString()
+            onStatusUpdate("✓ Tersimpan lokal ($sizeMbStr MB) (Storage Offline / Unconfigured)")
+            Pair(pathToUse, profileResult)
         }
     }
 
@@ -187,8 +206,8 @@ object ImageCompressor {
 
         val sizeMb = bytes.size / (1024.0 * 1024.0)
         val sizeMbStr = String.format(Locale.US, "%.2f", sizeMb)
-        val statusText = if (!compressionApplied) "Foto profil <= 5 MB ($sizeMbStr MB, kualitas asli)." else "Foto profil dikompres ke $sizeMbStr MB."
-        onStatusUpdate("$statusText Mengunggah ke Firebase Storage...")
+        val statusText = if (!compressionApplied) "Foto profil <= 5 MB ($sizeMbStr MB, kualitas asli)." else "Foto profil dikompresi ke $sizeMbStr MB."
+        onStatusUpdate("$statusText Mengunggah ke server...")
 
         val profileResult = CompressedImageResult(
             bytes = bytes,
@@ -206,10 +225,11 @@ object ImageCompressor {
         try {
             val timestamp = System.currentTimeMillis()
             val fileName = "profil_${timestamp}.jpg"
-            val storageInstance = FirebaseStorage.getInstance()
+            val storageInstance = getStorageInstance()
             val storageRef = storageInstance.reference.child("foto_profil/$fileName")
 
-            val uploadTask = storageRef.putBytes(bytes)
+            val metadata = StorageMetadata.Builder().setContentType("image/jpeg").build()
+            val uploadTask = storageRef.putBytes(bytes, metadata)
 
             val downloadUrl = suspendCancellableCoroutine<String> { continuation ->
                 uploadTask.addOnSuccessListener {
@@ -224,12 +244,36 @@ object ImageCompressor {
             }
 
             Log.i(TAG, "Bitmap foto profil terunggah: $downloadUrl ($sizeMbStr MB)")
-            onStatusUpdate("✓ Foto profil terunggah ($sizeMbStr MB).")
+            onStatusUpdate("✓ Terunggah ke Firebase Storage ($sizeMbStr MB)")
             Pair(downloadUrl, profileResult)
         } catch (e: Exception) {
             Log.e(TAG, "Profile Bitmap Storage Upload Error: ${e.message}")
-            onStatusUpdate("⚠ Foto profil ($sizeMbStr MB). Storage offline/unconfigured.")
-            Pair("", profileResult)
+            val localPath = saveProfileImageLocally(context, bytes)
+            if (localPath != null) {
+                onStatusUpdate("✓ Tersimpan lokal ($sizeMbStr MB) (Storage Offline / Unconfigured)")
+                Pair(localPath, profileResult)
+            } else {
+                onStatusUpdate("⚠ Foto profil ($sizeMbStr MB). Storage offline & gagal simpan lokal.")
+                Pair("", profileResult)
+            }
+        }
+    }
+
+    fun saveProfileImageLocally(context: Context, bytes: ByteArray): String? {
+        return try {
+            val dir = context.filesDir
+            dir.listFiles { _, name -> name.startsWith("profile_photo_") && name.endsWith(".jpg") }?.forEach {
+                it.delete()
+            }
+            val fileName = "profile_photo_${System.currentTimeMillis()}.jpg"
+            val file = File(dir, fileName)
+            FileOutputStream(file).use { fos ->
+                fos.write(bytes)
+            }
+            file.absolutePath
+        } catch (e: Exception) {
+            Log.e(TAG, "Gagal menyimpan foto profil secara lokal: ${e.message}", e)
+            null
         }
     }
 

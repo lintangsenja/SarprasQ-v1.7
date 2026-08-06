@@ -66,6 +66,7 @@ import kotlin.math.roundToInt
 fun ManualImageCropDialog(
     sourceBitmap: Bitmap,
     onCropped: (Bitmap) -> Unit,
+    onUseOriginal: (() -> Unit)? = null,
     onDismiss: () -> Unit
 ) {
     var scale by remember { mutableFloatStateOf(1.0f) }
@@ -252,8 +253,18 @@ fun ManualImageCropDialog(
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Batal")
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                if (onUseOriginal != null) {
+                    TextButton(onClick = onUseOriginal) {
+                        Text("Asli", color = PastelSkyBlueDark, fontWeight = FontWeight.SemiBold)
+                    }
+                }
+                TextButton(onClick = onDismiss) {
+                    Text("Batal", color = TextSecondary)
+                }
             }
         }
     )

@@ -1143,11 +1143,89 @@ class SarprasRepository(
     // --- PROJECT TASKS / TO-DO LIST ---
     val allProjectTasks: Flow<List<ProjectTask>> = dao.getAllProjectTasks()
 
-    suspend fun insertProjectTask(task: ProjectTask): Long = dao.insertProjectTask(task)
+    suspend fun insertProjectTask(task: ProjectTask): Long {
+        val id = dao.insertProjectTask(task)
+        val finalTask = if (task.id == 0) task.copy(id = id.toInt()) else task
+        syncProjectTaskToFirebase(finalTask)
+        return id
+    }
 
-    suspend fun updateProjectTask(task: ProjectTask) = dao.updateProjectTask(task)
+    suspend fun updateProjectTask(task: ProjectTask) {
+        dao.updateProjectTask(task)
+        syncProjectTaskToFirebase(task)
+    }
 
-    suspend fun deleteProjectTask(task: ProjectTask) = dao.deleteProjectTask(task)
+    suspend fun deleteProjectTask(task: ProjectTask) {
+        dao.deleteProjectTask(task)
+        deleteProjectTaskFromFirebase(task)
+    }
+
+    private fun syncProjectTaskToFirebase(task: ProjectTask) {
+        try {
+            getDatabaseRef()?.child("project_tasks")?.child(task.id.toString())?.setValue(task)
+                ?.addOnFailureListener { e ->
+                    Log.e("SarprasRepository", "Failed to sync ProjectTask to RTDB: ${e.message}", e)
+                }
+        } catch (e: Exception) {
+            Log.e("SarprasRepository", "Failed to sync ProjectTask to RTDB: ${e.message}", e)
+        }
+
+        try {
+            getFirestoreInstance()?.collection("project_tasks")?.document(task.id.toString())?.set(task)
+                ?.addOnFailureListener { e ->
+                    Log.e("SarprasRepository", "Failed to sync ProjectTask to Firestore: ${e.message}", e)
+                }
+        } catch (e: Exception) {
+            Log.e("SarprasRepository", "Failed to sync ProjectTask to Firestore: ${e.message}", e)
+        }
+    }
+
+    private fun deleteProjectTaskFromFirebase(task: ProjectTask) {
+        try {
+            getDatabaseRef()?.child("project_tasks")?.child(task.id.toString())?.removeValue()
+        } catch (e: Exception) {
+            Log.e("SarprasRepository", "Failed to delete ProjectTask from RTDB: ${e.message}")
+        }
+
+        try {
+            getFirestoreInstance()?.collection("project_tasks")?.document(task.id.toString())?.delete()
+        } catch (e: Exception) {
+            Log.e("SarprasRepository", "Failed to delete ProjectTask from Firestore: ${e.message}")
+        }
+    }
+
+    private var projectTasksListenerRegistration: com.google.firebase.firestore.ListenerRegistration? = null
+
+    fun startFirestoreRealtimeSync(coroutineScope: kotlinx.coroutines.CoroutineScope) {
+        try {
+            val fs = getFirestoreInstance() ?: return
+            projectTasksListenerRegistration?.remove()
+            projectTasksListenerRegistration = fs.collection("project_tasks")
+                .addSnapshotListener { snapshot, error ->
+                    if (error != null) {
+                        Log.e("SarprasRepository", "Firestore project_tasks snapshot listener error: ${error.message}")
+                        return@addSnapshotListener
+                    }
+                    if (snapshot != null && !snapshot.isEmpty) {
+                        val tasks = snapshot.documents.mapNotNull { doc ->
+                            try {
+                                doc.toObject(ProjectTask::class.java)
+                            } catch (e: Exception) {
+                                Log.e("SarprasRepository", "Error parsing ProjectTask doc: ${e.message}")
+                                null
+                            }
+                        }
+                        if (tasks.isNotEmpty()) {
+                            coroutineScope.launch(Dispatchers.IO) {
+                                dao.insertProjectTasks(tasks)
+                            }
+                        }
+                    }
+                }
+        } catch (e: Exception) {
+            Log.e("SarprasRepository", "Failed to start Firestore realtime sync for project_tasks: ${e.message}")
+        }
+    }
 
     // --- CLEAR ALL OPERATIONAL / DUMMY DATA (FRESH START) ---
     suspend fun clearAllOperationalData() {

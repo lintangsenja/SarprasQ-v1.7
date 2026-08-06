@@ -1,0 +1,6 @@
+{
+  "name": "SarprasQ",
+  "description": "Aplikasi pengelolaan sarana dan prasarana sekolah SMA dengan kontrol laporan, rencana kerja, arsip surat, dan rekap peminjaman makro.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

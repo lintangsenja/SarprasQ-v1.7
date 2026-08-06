@@ -1,7 +1,5 @@
 package com.lintang.sarprasq.ui.components
 
-import android.graphics.BitmapFactory
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
@@ -12,20 +10,18 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
-import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import coil.compose.AsyncImage
 import com.lintang.sarprasq.ui.theme.PastelSkyBlue
 import com.lintang.sarprasq.ui.theme.PastelSkyBlueDark
-import java.io.File
 
 @Composable
 fun ProfileAvatar(
@@ -37,19 +33,6 @@ fun ProfileAvatar(
     backgroundColor: Color = PastelSkyBlue.copy(alpha = 0.4f),
     borderColor: Color = PastelSkyBlueDark
 ) {
-    val bitmap = remember(imagePath) {
-        if (!imagePath.isNullOrBlank()) {
-            val file = File(imagePath)
-            if (file.exists()) {
-                try {
-                    BitmapFactory.decodeFile(file.absolutePath)
-                } catch (e: Exception) {
-                    null
-                }
-            } else null
-        } else null
-    }
-
     Box(
         modifier = modifier
             .clip(shape)
@@ -57,9 +40,9 @@ fun ProfileAvatar(
             .border(1.5.dp, borderColor, shape),
         contentAlignment = Alignment.Center
     ) {
-        if (bitmap != null) {
-            Image(
-                bitmap = bitmap.asImageBitmap(),
+        if (!imagePath.isNullOrBlank()) {
+            AsyncImage(
+                model = imagePath,
                 contentDescription = "Foto / Logo Profil",
                 contentScale = ContentScale.Crop,
                 modifier = Modifier

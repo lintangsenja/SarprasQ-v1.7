@@ -43,6 +43,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.FloatingActionButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedButton
@@ -131,7 +132,8 @@ fun AdministrasiScreen(
                     onClick = onOpenAddSurat,
                     containerColor = PastelLavenderDark,
                     contentColor = Color.White,
-                    shape = CircleShape
+                    shape = CircleShape,
+                    elevation = FloatingActionButtonDefaults.elevation(defaultElevation = 6.dp, pressedElevation = 10.dp)
                 ) {
                     Icon(imageVector = Icons.Default.Add, contentDescription = "Tambah Surat", modifier = Modifier.size(24.dp))
                 }
@@ -140,7 +142,8 @@ fun AdministrasiScreen(
                     onClick = onOpenAddPeminjaman,
                     containerColor = PastelSkyBlueDark,
                     contentColor = Color.White,
-                    shape = CircleShape
+                    shape = CircleShape,
+                    elevation = FloatingActionButtonDefaults.elevation(defaultElevation = 6.dp, pressedElevation = 10.dp)
                 ) {
                     Icon(imageVector = Icons.Default.Add, contentDescription = "Tambah Rekap Peminjaman", modifier = Modifier.size(24.dp))
                 }

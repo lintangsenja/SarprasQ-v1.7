@@ -76,6 +76,7 @@ import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.FloatingActionButtonDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -89,6 +90,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberDatePickerState
+import com.lintang.sarprasq.ui.components.FilterTriggerButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -367,27 +369,11 @@ fun TodoProjectScreen(
                         )
 
                         // Tombol Ikon Filter (Sejajar di sebelah kanan Search Bar)
-                        Card(
+                        FilterTriggerButton(
+                            activeFilterCount = if (isFilterActive) 1 else 0,
                             onClick = { showFilterDialog = true },
-                            shape = RoundedCornerShape(12.dp),
-                            colors = CardDefaults.cardColors(
-                                containerColor = if (isFilterActive) PastelSkyBlue.copy(alpha = 0.35f) else Color.White
-                            ),
-                            border = BorderStroke(1.dp, if (isFilterActive) PastelSkyBlueDark else Color(0xFFE2E8F0)),
                             modifier = Modifier.size(52.dp)
-                        ) {
-                            Box(
-                                modifier = Modifier.fillMaxSize(),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.FilterList,
-                                    contentDescription = "Filter Data",
-                                    tint = if (isFilterActive) PastelSkyBlueDark else TextSecondary,
-                                    modifier = Modifier.size(24.dp)
-                                )
-                            }
-                        }
+                        )
                     }
 
                     // Indicator Active Filter Chips
@@ -526,6 +512,7 @@ fun TodoProjectScreen(
             containerColor = PastelSkyBlueDark,
             contentColor = Color.White,
             shape = CircleShape,
+            elevation = FloatingActionButtonDefaults.elevation(defaultElevation = 6.dp, pressedElevation = 10.dp),
             modifier = Modifier
                 .align(Alignment.BottomEnd)
                 .padding(20.dp)

@@ -28,13 +28,16 @@ import androidx.compose.material.icons.filled.AddCircle
 import androidx.compose.material.icons.filled.AddPhotoAlternate
 import androidx.compose.material.icons.filled.Badge
 import androidx.compose.material.icons.filled.Category
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Note
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
@@ -50,7 +53,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.launch
+import com.lintang.sarprasq.util.ImageCompressor
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -152,11 +158,33 @@ fun AddHelpdeskDialog(
     var expandedRuang by remember { mutableStateOf(false) }
     var expandedStatus by remember { mutableStateOf(false) }
 
-    // Gallery Picker Launcher
+    val scope = rememberCoroutineScope()
+    val context = androidx.compose.ui.platform.LocalContext.current
+    var isUploadingPhoto by remember { mutableStateOf(false) }
+    var uploadStatusMsg by remember { mutableStateOf<String?>(null) }
+    var compressedDetails by remember { mutableStateOf<String?>(null) }
+
+    // Gallery Picker Launcher with automatic compression (<400 KB) & Firebase Storage upload
     val imagePickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri ->
-        uri?.let { fotoUrl = it.toString() }
+        uri?.let { selectedUri ->
+            scope.launch {
+                isUploadingPhoto = true
+                val (urlResult, compressedInfo) = ImageCompressor.processAndUploadPhoto(
+                    context = context,
+                    imageUri = selectedUri,
+                    folder = "bukti_kerusakan",
+                    onStatusUpdate = { status -> uploadStatusMsg = status }
+                )
+                fotoUrl = urlResult
+                if (compressedInfo != null) {
+                    val kb = String.format(java.util.Locale.US, "%.1f", compressedInfo.sizeInKb)
+                    compressedDetails = "Ukuran: ${kb} KB (Mentok <400 KB) • Rasio: ${compressedInfo.finalWidth}x${compressedInfo.finalHeight} px"
+                }
+                isUploadingPhoto = false
+            }
+        }
     }
 
     // Sample photos for quick preview selection
@@ -584,20 +612,69 @@ fun AddHelpdeskDialog(
 
                         Spacer(modifier = Modifier.height(8.dp))
 
-                        if (fotoUrl.isNotBlank()) {
-                            Box(
+                        if (isUploadingPhoto) {
+                            Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .height(150.dp)
-                                    .clip(RoundedCornerShape(12.dp))
-                                    .border(1.dp, Color.LightGray, RoundedCornerShape(12.dp))
+                                    .background(PastelSkyBlueContainer, RoundedCornerShape(12.dp))
+                                    .padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
-                                AsyncImage(
-                                    model = fotoUrl,
-                                    contentDescription = "Foto Kerusakan",
-                                    contentScale = ContentScale.Crop,
-                                    modifier = Modifier.fillMaxSize()
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(20.dp),
+                                    color = PastelSkyBlueDark,
+                                    strokeWidth = 2.dp
                                 )
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Text(
+                                    text = uploadStatusMsg ?: "Memproses kompresi & mengunggah foto...",
+                                    fontSize = 11.sp,
+                                    color = PastelSkyBlueDark,
+                                    fontWeight = FontWeight.Medium
+                                )
+                            }
+                        } else if (fotoUrl.isNotBlank()) {
+                            Column {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(150.dp)
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .border(1.dp, Color.LightGray, RoundedCornerShape(12.dp))
+                                ) {
+                                    AsyncImage(
+                                        model = fotoUrl,
+                                        contentDescription = "Foto Kerusakan",
+                                        contentScale = ContentScale.Crop,
+                                        modifier = Modifier.fillMaxSize()
+                                    )
+                                }
+
+                                if (uploadStatusMsg != null || compressedDetails != null) {
+                                    Spacer(modifier = Modifier.height(6.dp))
+                                    Column(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .background(PastelMintLight, RoundedCornerShape(8.dp))
+                                            .padding(8.dp)
+                                    ) {
+                                        uploadStatusMsg?.let { msg ->
+                                            Text(
+                                                text = msg,
+                                                fontSize = 10.sp,
+                                                fontWeight = FontWeight.SemiBold,
+                                                color = PastelMintDark
+                                            )
+                                        }
+                                        compressedDetails?.let { det ->
+                                            Text(
+                                                text = det,
+                                                fontSize = 9.sp,
+                                                color = TextSecondary
+                                            )
+                                        }
+                                    }
+                                }
                             }
                         } else {
                             Row(

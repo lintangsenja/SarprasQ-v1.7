@@ -10,12 +10,14 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -65,33 +67,37 @@ fun FilterTriggerButton(
     activeFilterCount: Int = 0,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
-    label: String = "Filter Laporan"
+    label: String = "Filter"
 ) {
-    OutlinedButton(
-        onClick = onClick,
-        modifier = modifier,
-        shape = RoundedCornerShape(12.dp),
-        colors = ButtonDefaults.outlinedButtonColors(
-            containerColor = if (activeFilterCount > 0) PastelSkyBlueContainer else PastelSurface,
-            contentColor = if (activeFilterCount > 0) PastelSkyBlueDark else TextPrimary
-        ),
-        border = BorderStroke(1.dp, if (activeFilterCount > 0) PastelSkyBlueDark else PastelCardBorder),
-        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
-    ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp)
-        ) {
-            Icon(
-                imageVector = Icons.Default.FilterList,
-                contentDescription = null,
-                modifier = Modifier.size(18.dp),
-                tint = if (activeFilterCount > 0) PastelSkyBlueDark else TextSecondary
+    Box(
+        modifier = modifier
+            .aspectRatio(1f)
+            .clip(RoundedCornerShape(12.dp))
+            .background(if (activeFilterCount > 0) PastelSkyBlueContainer else PastelSurface)
+            .border(
+                BorderStroke(
+                    1.dp,
+                    if (activeFilterCount > 0) PastelSkyBlueDark else PastelCardBorder
+                ),
+                shape = RoundedCornerShape(12.dp)
             )
-            Text(
-                text = if (activeFilterCount > 0) "$label ($activeFilterCount)" else label,
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Bold
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(
+            imageVector = Icons.Default.FilterList,
+            contentDescription = "Filter",
+            modifier = Modifier.size(20.dp),
+            tint = if (activeFilterCount > 0) PastelSkyBlueDark else TextSecondary
+        )
+        if (activeFilterCount > 0) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(5.dp)
+                    .size(8.dp)
+                    .clip(CircleShape)
+                    .background(PastelSkyBlueDark)
             )
         }
     }

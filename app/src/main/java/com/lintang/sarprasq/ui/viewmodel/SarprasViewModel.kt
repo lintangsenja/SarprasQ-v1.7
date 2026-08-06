@@ -2,6 +2,9 @@ package com.lintang.sarprasq.ui.viewmodel
 
 import android.app.Application
 import android.content.Context
+import android.net.Uri
+import com.lintang.sarprasq.util.CompressedImageResult
+import com.lintang.sarprasq.util.ImageCompressor
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.lintang.sarprasq.data.local.SarprasDatabase
@@ -50,10 +53,55 @@ data class DashboardStats(
     val agendaProgres: Int = 0
 )
 
+data class ImageUploadState(
+    val isUploading: Boolean = false,
+    val progressMessage: String = "",
+    val downloadUrl: String? = null,
+    val compressedInfo: CompressedImageResult? = null,
+    val errorMessage: String? = null
+)
+
 class SarprasViewModel(application: Application) : AndroidViewModel(application) {
 
     private val repository: SarprasRepository
     private val prefs = application.getSharedPreferences("sarprasq_prefs", Context.MODE_PRIVATE)
+
+    val imageUploadState = MutableStateFlow(ImageUploadState())
+
+    fun uploadProofPhoto(
+        context: Context,
+        imageUri: Uri,
+        folder: String = "bukti_kerusakan",
+        onSuccess: (String, CompressedImageResult) -> Unit = { _, _ -> },
+        onError: (String) -> Unit = {}
+    ) {
+        viewModelScope.launch {
+            imageUploadState.value = ImageUploadState(
+                isUploading = true,
+                progressMessage = "Mengompresi gambar (max 400 KB) & memproses EXIF..."
+            )
+            val result = repository.uploadProofPhoto(context, imageUri, folder)
+            result.onSuccess { (url, compressed) ->
+                imageUploadState.value = ImageUploadState(
+                    isUploading = false,
+                    downloadUrl = url,
+                    compressedInfo = compressed
+                )
+                onSuccess(url, compressed)
+            }.onFailure { exception ->
+                val err = exception.localizedMessage ?: "Gagal mengunggah foto ke Firebase Storage"
+                imageUploadState.value = ImageUploadState(
+                    isUploading = false,
+                    errorMessage = err
+                )
+                onError(err)
+            }
+        }
+    }
+
+    fun clearImageUploadState() {
+        imageUploadState.value = ImageUploadState()
+    }
 
     // Helper to initialize and migrate profile preferences
     private fun getInitialPref(key: String, legacyDefault: String, newDefault: String): String {

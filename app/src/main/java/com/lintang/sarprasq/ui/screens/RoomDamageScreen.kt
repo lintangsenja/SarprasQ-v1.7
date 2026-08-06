@@ -50,11 +50,13 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.FloatingActionButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedButton
@@ -68,7 +70,10 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.launch
+import com.lintang.sarprasq.util.ImageCompressor
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -461,7 +466,8 @@ fun RoomDamageScreen(
             modifier = Modifier
                 .align(Alignment.BottomEnd)
                 .padding(20.dp),
-            shape = CircleShape
+            shape = CircleShape,
+            elevation = FloatingActionButtonDefaults.elevation(defaultElevation = 6.dp, pressedElevation = 10.dp)
         ) {
             Icon(Icons.Default.Add, contentDescription = "Lapor Kerusakan Ruangan", modifier = Modifier.size(24.dp))
         }
@@ -1157,10 +1163,32 @@ fun AddDamageReportDialog(
     var keterangan by remember { mutableStateOf("") }
     var fotoUrl by remember { mutableStateOf("") }
 
+    val scope = rememberCoroutineScope()
+    val context = androidx.compose.ui.platform.LocalContext.current
+    var isUploadingPhoto by remember { mutableStateOf(false) }
+    var uploadStatusMsg by remember { mutableStateOf<String?>(null) }
+    var compressedDetails by remember { mutableStateOf<String?>(null) }
+
     val imagePickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri ->
-        uri?.let { fotoUrl = it.toString() }
+        uri?.let { selectedUri ->
+            scope.launch {
+                isUploadingPhoto = true
+                val (urlResult, compressedInfo) = ImageCompressor.processAndUploadPhoto(
+                    context = context,
+                    imageUri = selectedUri,
+                    folder = "bukti_kerusakan",
+                    onStatusUpdate = { status -> uploadStatusMsg = status }
+                )
+                fotoUrl = urlResult
+                if (compressedInfo != null) {
+                    val kb = String.format(java.util.Locale.US, "%.1f", compressedInfo.sizeInKb)
+                    compressedDetails = "Ukuran: ${kb} KB (Mentok <400 KB) • Rasio: ${compressedInfo.finalWidth}x${compressedInfo.finalHeight} px"
+                }
+                isUploadingPhoto = false
+            }
+        }
     }
 
     val samplePhotos = listOf(
@@ -1390,33 +1418,84 @@ fun AddDamageReportDialog(
                             }
 
                             if (fotoUrl.isNotBlank()) {
-                                OutlinedButton(
+                                IconButton(
                                     onClick = { fotoUrl = "" },
-                                    shape = RoundedCornerShape(8.dp),
-                                    colors = ButtonDefaults.outlinedButtonColors(contentColor = PastelPeachDark),
-                                    modifier = Modifier.height(28.dp)
+                                    modifier = Modifier.size(28.dp)
                                 ) {
-                                    Text("Hapus", fontSize = 10.sp)
+                                    Icon(
+                                        imageVector = Icons.Default.Delete,
+                                        contentDescription = "Hapus Foto",
+                                        tint = PastelPeachDark,
+                                        modifier = Modifier.size(18.dp)
+                                    )
                                 }
                             }
                         }
 
                         Spacer(modifier = Modifier.height(8.dp))
 
-                        if (fotoUrl.isNotBlank()) {
-                            Box(
+                        if (isUploadingPhoto) {
+                            Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .height(110.dp)
-                                    .clip(RoundedCornerShape(10.dp))
-                                    .border(1.dp, Color.LightGray, RoundedCornerShape(10.dp))
+                                    .background(PastelSkyBlueContainer, RoundedCornerShape(10.dp))
+                                    .padding(10.dp),
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
-                                AsyncImage(
-                                    model = fotoUrl,
-                                    contentDescription = "Foto Kerusakan",
-                                    contentScale = ContentScale.Crop,
-                                    modifier = Modifier.fillMaxSize()
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(18.dp),
+                                    color = PastelSkyBlueDark,
+                                    strokeWidth = 2.dp
                                 )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = uploadStatusMsg ?: "Memproses & mengunggah foto...",
+                                    fontSize = 11.sp,
+                                    color = PastelSkyBlueDark
+                                )
+                            }
+                        } else if (fotoUrl.isNotBlank()) {
+                            Column {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(110.dp)
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .border(1.dp, Color.LightGray, RoundedCornerShape(10.dp))
+                                ) {
+                                    AsyncImage(
+                                        model = fotoUrl,
+                                        contentDescription = "Foto Kerusakan",
+                                        contentScale = ContentScale.Crop,
+                                        modifier = Modifier.fillMaxSize()
+                                    )
+                                }
+
+                                if (uploadStatusMsg != null || compressedDetails != null) {
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Column(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .background(PastelMintLight, RoundedCornerShape(6.dp))
+                                            .padding(6.dp)
+                                    ) {
+                                        uploadStatusMsg?.let { msg ->
+                                            Text(
+                                                text = msg,
+                                                fontSize = 10.sp,
+                                                fontWeight = FontWeight.SemiBold,
+                                                color = PastelMintDark
+                                            )
+                                        }
+                                        compressedDetails?.let { det ->
+                                            Text(
+                                                text = det,
+                                                fontSize = 9.sp,
+                                                color = TextSecondary
+                                            )
+                                        }
+                                    }
+                                }
                             }
                         } else {
                             Row(

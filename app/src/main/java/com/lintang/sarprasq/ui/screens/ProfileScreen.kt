@@ -61,6 +61,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
+import com.lintang.sarprasq.util.ImageCompressor
+import com.lintang.sarprasq.ui.theme.PastelSkyBlueContainer
 import com.lintang.sarprasq.ui.components.ManualImageCropDialog
 import com.lintang.sarprasq.ui.components.ProfileAvatar
 import com.lintang.sarprasq.ui.theme.PastelBackground
@@ -89,6 +94,9 @@ fun ProfileScreen(
     val namaProgram by viewModel.namaProgram.collectAsState()
     val profileImagePath by viewModel.profileImagePath.collectAsState()
 
+    val scope = rememberCoroutineScope()
+    var isUploadingProfilePhoto by remember { mutableStateOf(false) }
+    var uploadStatusMsg by remember { mutableStateOf<String?>(null) }
     var showEditProfileDialog by remember { mutableStateOf(false) }
     var showLogoutConfirmDialog by remember { mutableStateOf(false) }
     var selectedBitmapForCrop by remember { mutableStateOf<Bitmap?>(null) }
@@ -141,6 +149,38 @@ fun ProfileScreen(
                     shape = RoundedCornerShape(26.dp),
                     iconSize = 48.dp
                 )
+
+                if (isUploadingProfilePhoto) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Row(
+                        modifier = Modifier
+                            .background(PastelSkyBlueContainer, RoundedCornerShape(10.dp))
+                            .padding(horizontal = 12.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(16.dp),
+                            color = PastelSkyBlueDark,
+                            strokeWidth = 2.dp
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = uploadStatusMsg ?: "Mengunggah foto profil...",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = PastelSkyBlueDark
+                        )
+                    }
+                } else if (uploadStatusMsg != null) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = uploadStatusMsg!!,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = PastelMintDark,
+                        textAlign = TextAlign.Center
+                    )
+                }
 
                 Spacer(modifier = Modifier.height(14.dp))
 
@@ -325,19 +365,20 @@ fun ProfileScreen(
         ManualImageCropDialog(
             sourceBitmap = selectedBitmapForCrop!!,
             onCropped = { croppedBitmap ->
-                try {
-                    val outputFile = File(context.filesDir, "profile_photo.png")
-                    val fos = FileOutputStream(outputFile)
-                    croppedBitmap.compress(Bitmap.CompressFormat.PNG, 95, fos)
-                    fos.flush()
-                    fos.close()
-
-                    viewModel.updateProfileImage(outputFile.absolutePath)
-                    Toast.makeText(context, "Foto/Logo profil berhasil diperbarui", Toast.LENGTH_SHORT).show()
-                } catch (e: Exception) {
-                    Toast.makeText(context, "Gagal menyimpan gambar: ${e.message}", Toast.LENGTH_SHORT).show()
-                } finally {
-                    selectedBitmapForCrop = null
+                val bitmapToUpload = croppedBitmap
+                selectedBitmapForCrop = null
+                scope.launch {
+                    isUploadingProfilePhoto = true
+                    val (downloadUrl, resultInfo) = ImageCompressor.processAndUploadProfileBitmap(
+                        context = context,
+                        bitmap = bitmapToUpload,
+                        onStatusUpdate = { status -> uploadStatusMsg = status }
+                    )
+                    if (downloadUrl.isNotBlank()) {
+                        viewModel.updateProfileImage(downloadUrl)
+                        Toast.makeText(context, "Foto profil berhasil diunggah ke Storage!", Toast.LENGTH_SHORT).show()
+                    }
+                    isUploadingProfilePhoto = false
                 }
             },
             onDismiss = { selectedBitmapForCrop = null }

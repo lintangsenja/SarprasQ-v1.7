@@ -303,37 +303,16 @@ fun ReportExporterScreen(viewModel: SarprasViewModel) {
                 Spacer(modifier = Modifier.width(8.dp))
 
                 // Inline 3-line Filter Icon Button
-                Box(
-                    modifier = Modifier
-                        .size(42.dp)
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(if (activeFilterCount > 0) PastelSkyBlue else Color.White)
-                        .border(1.dp, if (activeFilterCount > 0) PastelSkyBlueDark else PastelCardBorder, RoundedCornerShape(12.dp))
-                        .clickable {
-                            tempCategoryName = currentCategory.title
-                            tempDateRange = selectedDateRange
-                            tempRuang = selectedRuang
-                            showFilterDialog = true
-                        },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.FilterList,
-                        contentDescription = "Filter",
-                        tint = if (activeFilterCount > 0) PastelSkyBlueDark else TextPrimary,
-                        modifier = Modifier.size(20.dp)
-                    )
-                    if (activeFilterCount > 0) {
-                        Box(
-                            modifier = Modifier
-                                .align(Alignment.TopEnd)
-                                .padding(5.dp)
-                                .size(8.dp)
-                                .clip(CircleShape)
-                                .background(PastelSkyBlueDark)
-                        )
-                    }
-                }
+                FilterTriggerButton(
+                    activeFilterCount = activeFilterCount,
+                    onClick = {
+                        tempCategoryName = currentCategory.title
+                        tempDateRange = selectedDateRange
+                        tempRuang = selectedRuang
+                        showFilterDialog = true
+                    },
+                    modifier = Modifier.size(42.dp)
+                )
             }
         }
 

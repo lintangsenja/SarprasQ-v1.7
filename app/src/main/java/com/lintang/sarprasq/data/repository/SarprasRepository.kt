@@ -1,5 +1,7 @@
 package com.lintang.sarprasq.data.repository
 
+import android.content.Context
+import android.net.Uri
 import android.util.Log
 import com.google.firebase.database.DataSnapshot
 import com.google.firebase.database.DatabaseError
@@ -7,6 +9,12 @@ import com.google.firebase.database.DatabaseReference
 import com.google.firebase.database.FirebaseDatabase
 import com.google.firebase.database.ValueEventListener
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.storage.FirebaseStorage
+import com.lintang.sarprasq.util.CompressedImageResult
+import com.lintang.sarprasq.util.ImageCompressor
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
 import com.lintang.sarprasq.data.local.SarprasDao
 import com.lintang.sarprasq.data.local.getDefaultKategoriList
 import com.lintang.sarprasq.data.local.getDefaultRuangList
@@ -88,6 +96,49 @@ class SarprasRepository(
             })
         } catch (e: Exception) {
             Log.e("SarprasRepository", "Failed to attach listener: ${e.message}")
+        }
+    }
+
+    /**
+     * Mengompresi gambar (maksimal 400 KB, menjaga rasio aspek & EXIF)
+     * dan mengunggahnya ke Firebase Storage.
+     * Mengembalikan Result berisi Pair(downloadUrl, CompressedImageResult).
+     */
+    suspend fun uploadProofPhoto(
+        context: Context,
+        imageUri: Uri,
+        folder: String = "bukti_kerusakan"
+    ): Result<Pair<String, CompressedImageResult>> = withContext(Dispatchers.IO) {
+        try {
+            // 1. Kompresi gambar otomatis (max 400 KB, aspect ratio & EXIF rotasi terjaga)
+            val compressed = ImageCompressor.compressImage(context, imageUri)
+                ?: return@withContext Result.failure(Exception("Gagal mengompresi gambar. Format file tidak didukung."))
+
+            val timestamp = System.currentTimeMillis()
+            val fileName = "bukti_${timestamp}.jpg"
+            val storageInstance = FirebaseStorage.getInstance()
+            val storageRef = storageInstance.reference.child("$folder/$fileName")
+
+            // 2. Upload byte array hasil kompresi ke Firebase Storage
+            val uploadTask = storageRef.putBytes(compressed.bytes)
+
+            val downloadUrl = suspendCancellableCoroutine<String> { continuation ->
+                uploadTask.addOnSuccessListener {
+                    storageRef.downloadUrl.addOnSuccessListener { uri ->
+                        if (continuation.isActive) continuation.resume(uri.toString())
+                    }.addOnFailureListener { ex ->
+                        if (continuation.isActive) continuation.resumeWithException(ex)
+                    }
+                }.addOnFailureListener { ex ->
+                    if (continuation.isActive) continuation.resumeWithException(ex)
+                }
+            }
+
+            Log.i("SarprasRepository", "Foto berhasil diunggah ke Firebase Storage: $downloadUrl (${compressed.sizeInKb} KB)")
+            Result.success(Pair(downloadUrl, compressed))
+        } catch (e: Exception) {
+            Log.e("SarprasRepository", "Gagal mengunggah foto ke Firebase Storage: ${e.message}", e)
+            Result.failure(e)
         }
     }
 

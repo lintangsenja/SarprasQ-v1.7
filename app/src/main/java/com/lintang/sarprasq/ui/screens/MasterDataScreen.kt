@@ -51,6 +51,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.FloatingActionButtonDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -414,7 +415,8 @@ fun KategoriTabContent(
             modifier = Modifier
                 .align(Alignment.BottomEnd)
                 .padding(20.dp),
-            shape = CircleShape
+            shape = CircleShape,
+            elevation = FloatingActionButtonDefaults.elevation(defaultElevation = 6.dp, pressedElevation = 10.dp)
         ) {
             Icon(Icons.Default.Add, contentDescription = "Tambah Kategori", modifier = Modifier.size(24.dp))
         }
@@ -790,7 +792,8 @@ fun SubKategoriTabContent(
             modifier = Modifier
                 .align(Alignment.BottomEnd)
                 .padding(20.dp),
-            shape = CircleShape
+            shape = CircleShape,
+            elevation = FloatingActionButtonDefaults.elevation(defaultElevation = 6.dp, pressedElevation = 10.dp)
         ) {
             Icon(Icons.Default.Add, contentDescription = "Tambah Sub-Kategori", modifier = Modifier.size(24.dp))
         }
@@ -1323,7 +1326,8 @@ fun RuangTabContent(
             modifier = Modifier
                 .align(Alignment.BottomEnd)
                 .padding(20.dp),
-            shape = CircleShape
+            shape = CircleShape,
+            elevation = FloatingActionButtonDefaults.elevation(defaultElevation = 6.dp, pressedElevation = 10.dp)
         ) {
             Icon(Icons.Default.Add, contentDescription = "Tambah Ruang", modifier = Modifier.size(24.dp))
         }
@@ -1793,7 +1797,8 @@ fun SatuanTabContent(
             modifier = Modifier
                 .align(Alignment.BottomEnd)
                 .padding(20.dp),
-            shape = CircleShape
+            shape = CircleShape,
+            elevation = FloatingActionButtonDefaults.elevation(defaultElevation = 6.dp, pressedElevation = 10.dp)
         ) {
             Icon(Icons.Default.Add, contentDescription = "Tambah Satuan", modifier = Modifier.size(24.dp))
         }
@@ -2150,7 +2155,8 @@ fun StatusPenangananTabContent(
             modifier = Modifier
                 .align(Alignment.BottomEnd)
                 .padding(20.dp),
-            shape = CircleShape
+            shape = CircleShape,
+            elevation = FloatingActionButtonDefaults.elevation(defaultElevation = 6.dp, pressedElevation = 10.dp)
         ) {
             Icon(Icons.Default.Add, contentDescription = "Tambah Status Penanganan", modifier = Modifier.size(24.dp))
         }
@@ -2435,7 +2441,8 @@ fun UrgensiTabContent(
             modifier = Modifier
                 .align(Alignment.BottomEnd)
                 .padding(20.dp),
-            shape = CircleShape
+            shape = CircleShape,
+            elevation = FloatingActionButtonDefaults.elevation(defaultElevation = 6.dp, pressedElevation = 10.dp)
         ) {
             Icon(Icons.Default.Add, contentDescription = "Tambah Urgensi", modifier = Modifier.size(24.dp))
         }

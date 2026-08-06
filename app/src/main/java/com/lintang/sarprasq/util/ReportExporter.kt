@@ -38,8 +38,21 @@ enum class ReportCategory(val title: String) {
 data class ReportFilter(
     val category: ReportCategory,
     val dateRangeType: String = "Semua", // Semua, Hari Ini, Bulan Ini, Tahun Ini
-    val selectedRuang: String = "Semua Ruang"
-)
+    val selectedRuang: String = "Semua Ruang",
+    val startDate: String = "",
+    val endDate: String = ""
+) {
+    val dateDisplayString: String
+        get() {
+            return if (startDate.isNotBlank() || endDate.isNotBlank()) {
+                val start = if (startDate.isNotBlank()) startDate else "Awal"
+                val end = if (endDate.isNotBlank()) endDate else "Kini"
+                "$start s/d $end"
+            } else {
+                dateRangeType
+            }
+        }
+}
 
 object ReportExporter {
 
@@ -178,7 +191,7 @@ object ReportExporter {
             textPaint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
             textPaint.textSize = 8.5f
             textPaint.color = Color.GRAY
-            canvas.drawText("Periode: ${filter.dateRangeType}  |  Lokasi/Ruang: ${filter.selectedRuang}  |  Dicetak: ${getCurrentTimestamp()}", 297.5f, currentY, textPaint)
+            canvas.drawText("Periode: ${filter.dateDisplayString}  |  Lokasi/Ruang: ${filter.selectedRuang}  |  Dicetak: ${getCurrentTimestamp()}", 297.5f, currentY, textPaint)
             currentY += 22f
 
             // --- 3. REKAP RINGKASAN DATA (METRICS CARD) ---
@@ -532,7 +545,7 @@ object ReportExporter {
             addRow(r++, listOf(schoolName.uppercase(Locale.getDefault())))
             addRow(r++, listOf("$programName - APLIKASI SISTEM MANAGEMENT SARPRAS"))
             addRow(r++, listOf(filter.category.title.uppercase(Locale.getDefault())))
-            addRow(r++, listOf("Periode: ${filter.dateRangeType}", "Ruang: ${filter.selectedRuang}", "Dicetak: ${getCurrentTimestamp()}"))
+            addRow(r++, listOf("Periode: ${filter.dateDisplayString}", "Ruang: ${filter.selectedRuang}", "Dicetak: ${getCurrentTimestamp()}"))
             addRow(r++, listOf("Petugas: $petugasName", "NIP: $nipPetugas"))
             r++ // Empty spacing row
 
@@ -763,7 +776,7 @@ object ReportExporter {
             addParagraph("------------------------------------------------------------------------------------------------------------------------", false, "center")
 
             addHeading(filter.category.title.uppercase(Locale.getDefault()), 14, "center", true)
-            addParagraph("Periode Filter: ${filter.dateRangeType}  |  Filter Ruang: ${filter.selectedRuang}  |  Dicetak: ${getCurrentTimestamp()}", false, "center")
+            addParagraph("Periode Filter: ${filter.dateDisplayString}  |  Filter Ruang: ${filter.selectedRuang}  |  Dicetak: ${getCurrentTimestamp()}", false, "center")
             addParagraph("Petugas Penanggung Jawab: $petugasName (NIP: $nipPetugas)", true, "left")
 
             when (filter.category) {

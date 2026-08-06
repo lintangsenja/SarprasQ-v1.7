@@ -23,6 +23,9 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CalendarMonth
+import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.FilterList
@@ -64,6 +67,7 @@ import com.lintang.sarprasq.data.model.HelpdeskReport
 import com.lintang.sarprasq.data.model.PeminjamanMakro
 import com.lintang.sarprasq.data.model.Ruang
 import com.lintang.sarprasq.data.model.SuratArsip
+import com.lintang.sarprasq.ui.components.DatePickerField
 import com.lintang.sarprasq.ui.components.FilterDialog
 import com.lintang.sarprasq.ui.components.FilterOptionGroup
 import com.lintang.sarprasq.ui.components.FilterTriggerButton
@@ -86,6 +90,7 @@ import com.lintang.sarprasq.util.ReportCategory
 import com.lintang.sarprasq.util.ReportExporter
 import com.lintang.sarprasq.util.ReportFilter
 import java.text.NumberFormat
+import java.text.SimpleDateFormat
 import java.util.Locale
 
 @OptIn(ExperimentalLayoutApi::class)
@@ -106,6 +111,8 @@ fun ReportExporterScreen(viewModel: SarprasViewModel) {
 
     var selectedCategoryIndex by remember { mutableStateOf(0) }
     var selectedDateRange by remember { mutableStateOf("Semua") }
+    var startDate by remember { mutableStateOf("") }
+    var endDate by remember { mutableStateOf("") }
     var selectedRuang by remember { mutableStateOf("Semua Ruang") }
     var showFilterDialog by remember { mutableStateOf(false) }
 
@@ -120,17 +127,32 @@ fun ReportExporterScreen(viewModel: SarprasViewModel) {
     var tempDateRange by remember { mutableStateOf(selectedDateRange) }
     var tempRuang by remember { mutableStateOf(selectedRuang) }
 
-    val activeFilterCount = (if (selectedDateRange != "Semua") 1 else 0) + (if (selectedRuang != "Semua Ruang") 1 else 0)
+    val activeFilterCount = (if (selectedDateRange != "Semua" || startDate.isNotBlank() || endDate.isNotBlank()) 1 else 0) + (if (selectedRuang != "Semua Ruang") 1 else 0)
 
-    // --- FILTER DATA LOGIC ---
-    val filteredHelpdesk = remember(allHelpdesk, selectedRuang) {
-        if (selectedRuang == "Semua Ruang") allHelpdesk
-        else allHelpdesk.filter { it.lokasi.contains(selectedRuang, ignoreCase = true) }
+    val dateSubtitle = if (startDate.isNotBlank() || endDate.isNotBlank()) {
+        "${startDate.ifBlank { "Awal" }} s/d ${endDate.ifBlank { "Kini" }}"
+    } else {
+        selectedDateRange
     }
 
-    val filteredActionPlans = remember(allActionPlans, selectedRuang) {
-        if (selectedRuang == "Semua Ruang") allActionPlans
-        else allActionPlans.filter { (it.lokasiRuang ?: "").contains(selectedRuang, ignoreCase = true) }
+    // --- FILTER DATA LOGIC ---
+    val filteredHelpdesk = remember(allHelpdesk, selectedRuang, selectedDateRange, startDate, endDate) {
+        allHelpdesk.filter { item ->
+            val matchRuang = if (selectedRuang == "Semua Ruang") true
+            else item.lokasi.contains(selectedRuang, ignoreCase = true)
+            val matchDate = isDateInRange(item.tanggal, startDate, endDate, selectedDateRange)
+            matchRuang && matchDate
+        }
+    }
+
+    val filteredActionPlans = remember(allActionPlans, selectedRuang, selectedDateRange, startDate, endDate) {
+        allActionPlans.filter { item ->
+            val matchRuang = if (selectedRuang == "Semua Ruang") true
+            else (item.lokasiRuang ?: "").contains(selectedRuang, ignoreCase = true)
+            val dateStr = item.tanggalMulai.ifBlank { item.targetWaktu }
+            val matchDate = isDateInRange(dateStr, startDate, endDate, selectedDateRange)
+            matchRuang && matchDate
+        }
     }
 
     val filteredRuang = remember(allRuang, selectedRuang) {
@@ -138,10 +160,18 @@ fun ReportExporterScreen(viewModel: SarprasViewModel) {
         else allRuang.filter { it.namaRuang.contains(selectedRuang, ignoreCase = true) }
     }
 
+    val filteredSurat = remember(allSurat, selectedDateRange, startDate, endDate) {
+        allSurat.filter { item ->
+            isDateInRange(item.tanggalSurat, startDate, endDate, selectedDateRange)
+        }
+    }
+
     val filterObj = ReportFilter(
         category = currentCategory,
         dateRangeType = selectedDateRange,
-        selectedRuang = selectedRuang
+        selectedRuang = selectedRuang,
+        startDate = startDate,
+        endDate = endDate
     )
 
     fun triggerExportPdf() {
@@ -156,7 +186,7 @@ fun ReportExporterScreen(viewModel: SarprasViewModel) {
             actionPlanList = filteredActionPlans,
             ruangList = filteredRuang,
             peminjamanList = allPeminjaman,
-            suratList = allSurat
+            suratList = filteredSurat
         )
     }
 
@@ -172,7 +202,7 @@ fun ReportExporterScreen(viewModel: SarprasViewModel) {
             actionPlanList = filteredActionPlans,
             ruangList = filteredRuang,
             peminjamanList = allPeminjaman,
-            suratList = allSurat
+            suratList = filteredSurat
         )
     }
 
@@ -188,7 +218,7 @@ fun ReportExporterScreen(viewModel: SarprasViewModel) {
             actionPlanList = filteredActionPlans,
             ruangList = filteredRuang,
             peminjamanList = allPeminjaman,
-            suratList = allSurat
+            suratList = filteredSurat
         )
     }
 
@@ -240,7 +270,7 @@ fun ReportExporterScreen(viewModel: SarprasViewModel) {
                         )
                         Spacer(modifier = Modifier.height(2.dp))
                         Text(
-                            text = "${currentCategory.title} • $selectedRuang",
+                            text = "${currentCategory.title} • Periode: $dateSubtitle • $selectedRuang",
                             fontSize = 11.5.sp,
                             color = TextSecondary,
                             maxLines = 1,
@@ -328,7 +358,152 @@ fun ReportExporterScreen(viewModel: SarprasViewModel) {
                 .fillMaxSize()
                 .padding(horizontal = 16.dp)
         ) {
-            // --- 3. ACTION BUTTONS FOR EXPORT ---
+            // --- 3. FILTER RENTANG TANGGAL (LANGSUNG DI HALAMAN UTAMA) ---
+            item {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color.White),
+                    border = BorderStroke(1.dp, PastelCardBorder),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                ) {
+                    Column(modifier = Modifier.padding(14.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(32.dp)
+                                        .clip(CircleShape)
+                                        .background(PastelSkyBlueContainer),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.DateRange,
+                                        contentDescription = null,
+                                        tint = PastelSkyBlueDark,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Column {
+                                    Text(
+                                        text = "Filter Rentang Tanggal",
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = TextPrimary
+                                    )
+                                    Text(
+                                        text = if (startDate.isNotBlank() || endDate.isNotBlank())
+                                            "Periode Kustom: ${startDate.ifBlank { "..." }} s/d ${endDate.ifBlank { "..." }}"
+                                        else if (selectedDateRange != "Semua") "Periode Preset: $selectedDateRange"
+                                        else "Menampilkan semua tanggal data",
+                                        fontSize = 11.sp,
+                                        color = TextSecondary
+                                    )
+                                }
+                            }
+
+                            if (startDate.isNotBlank() || endDate.isNotBlank() || selectedDateRange != "Semua") {
+                                Surface(
+                                    onClick = {
+                                        startDate = ""
+                                        endDate = ""
+                                        selectedDateRange = "Semua"
+                                    },
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = PastelPeach,
+                                    contentColor = PastelPeachDark
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(Icons.Default.Clear, contentDescription = "Reset", modifier = Modifier.size(12.dp))
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text("Reset", fontSize = 10.5.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        // Quick Preset Chips
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            listOf("Semua", "Hari Ini", "Bulan Ini", "Tahun Ini").forEach { preset ->
+                                val isSelected = selectedDateRange == preset && startDate.isBlank() && endDate.isBlank()
+                                FilterChip(
+                                    selected = isSelected,
+                                    onClick = {
+                                        selectedDateRange = preset
+                                        startDate = ""
+                                        endDate = ""
+                                    },
+                                    label = { Text(preset, fontSize = 11.sp, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium) },
+                                    shape = RoundedCornerShape(10.dp),
+                                    colors = FilterChipDefaults.filterChipColors(
+                                        selectedContainerColor = PastelSkyBlue,
+                                        selectedLabelColor = PastelSkyBlueDark,
+                                        containerColor = PastelSurface,
+                                        labelColor = TextSecondary
+                                    ),
+                                    border = FilterChipDefaults.filterChipBorder(
+                                        enabled = true,
+                                        selected = isSelected,
+                                        borderColor = PastelCardBorder,
+                                        selectedBorderColor = PastelSkyBlueDark,
+                                        borderWidth = 1.dp,
+                                        selectedBorderWidth = 1.dp
+                                    ),
+                                    modifier = Modifier.height(32.dp)
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        // Form Pilihan Filter Tanggal
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            DatePickerField(
+                                value = startDate,
+                                onDateSelected = { newDate ->
+                                    startDate = newDate
+                                    selectedDateRange = "Kustom"
+                                },
+                                label = "Dari Tanggal",
+                                placeholder = "DD/MM/YYYY",
+                                modifier = Modifier.weight(1f)
+                            )
+
+                            DatePickerField(
+                                value = endDate,
+                                onDateSelected = { newDate ->
+                                    endDate = newDate
+                                    selectedDateRange = "Kustom"
+                                },
+                                label = "Sampai Tanggal",
+                                placeholder = "DD/MM/YYYY",
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+            }
+
+            // --- 4. ACTION BUTTONS FOR EXPORT ---
             item {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
@@ -436,7 +611,7 @@ fun ReportExporterScreen(viewModel: SarprasViewModel) {
                     ReportCategory.HELPDESK -> HelpdeskSummaryMetrics(filteredHelpdesk)
                     ReportCategory.ACTION_PLAN -> ActionPlanSummaryMetrics(filteredActionPlans)
                     ReportCategory.INVENTARIS_RUANG -> InventarisSummaryMetrics(filteredRuang, allPeminjaman)
-                    ReportCategory.ADMINISTRASI -> AdministrasiSummaryMetrics(allSurat)
+                    ReportCategory.ADMINISTRASI -> AdministrasiSummaryMetrics(filteredSurat)
                 }
 
                 Spacer(modifier = Modifier.height(16.dp))
@@ -447,7 +622,7 @@ fun ReportExporterScreen(viewModel: SarprasViewModel) {
                             ReportCategory.HELPDESK -> "${filteredHelpdesk.size} Item"
                             ReportCategory.ACTION_PLAN -> "${filteredActionPlans.size} Item"
                             ReportCategory.INVENTARIS_RUANG -> "${filteredRuang.size} Ruang"
-                            ReportCategory.ADMINISTRASI -> "${allSurat.size} Dokumen"
+                            ReportCategory.ADMINISTRASI -> "${filteredSurat.size} Dokumen"
                         }
                     })",
                     fontSize = 12.sp,
@@ -475,7 +650,7 @@ fun ReportExporterScreen(viewModel: SarprasViewModel) {
                     }
                 }
                 ReportCategory.ADMINISTRASI -> {
-                    items(allSurat) { item ->
+                    items(filteredSurat) { item ->
                         SuratPreviewCard(item)
                     }
                 }
@@ -716,4 +891,84 @@ private fun StatusTag(label: String, bgColor: Color, textColor: Color) {
     ) {
         Text(label, fontSize = 10.sp, fontWeight = FontWeight.Bold, color = textColor)
     }
+}
+
+private fun isDateInRange(
+    dateStr: String,
+    startDateStr: String,
+    endDateStr: String,
+    rangeType: String
+): Boolean {
+    if (rangeType == "Semua" && startDateStr.isBlank() && endDateStr.isBlank()) {
+        return true
+    }
+
+    val date = parseAnyDate(dateStr) ?: return true
+
+    val cal = java.util.Calendar.getInstance().apply { time = date }
+    val now = java.util.Calendar.getInstance()
+
+    if (startDateStr.isBlank() && endDateStr.isBlank()) {
+        return when (rangeType) {
+            "Hari Ini" -> {
+                cal.get(java.util.Calendar.YEAR) == now.get(java.util.Calendar.YEAR) &&
+                        cal.get(java.util.Calendar.DAY_OF_YEAR) == now.get(java.util.Calendar.DAY_OF_YEAR)
+            }
+            "Bulan Ini" -> {
+                cal.get(java.util.Calendar.YEAR) == now.get(java.util.Calendar.YEAR) &&
+                        cal.get(java.util.Calendar.MONTH) == now.get(java.util.Calendar.MONTH)
+            }
+            "Tahun Ini" -> {
+                cal.get(java.util.Calendar.YEAR) == now.get(java.util.Calendar.YEAR)
+            }
+            else -> true
+        }
+    }
+
+    var inRange = true
+    if (startDateStr.isNotBlank()) {
+        val startDate = parseAnyDate(startDateStr)
+        if (startDate != null) {
+            val startCal = java.util.Calendar.getInstance().apply {
+                time = startDate
+                set(java.util.Calendar.HOUR_OF_DAY, 0)
+                set(java.util.Calendar.MINUTE, 0)
+                set(java.util.Calendar.SECOND, 0)
+                set(java.util.Calendar.MILLISECOND, 0)
+            }
+            inRange = inRange && !cal.time.before(startCal.time)
+        }
+    }
+    if (endDateStr.isNotBlank()) {
+        val endDate = parseAnyDate(endDateStr)
+        if (endDate != null) {
+            val endCal = java.util.Calendar.getInstance().apply {
+                time = endDate
+                set(java.util.Calendar.HOUR_OF_DAY, 23)
+                set(java.util.Calendar.MINUTE, 59)
+                set(java.util.Calendar.SECOND, 59)
+                set(java.util.Calendar.MILLISECOND, 999)
+            }
+            inRange = inRange && !cal.time.after(endCal.time)
+        }
+    }
+    return inRange
+}
+
+private fun parseAnyDate(dateStr: String): java.util.Date? {
+    if (dateStr.isBlank()) return null
+    val formats = listOf<SimpleDateFormat>(
+        SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()),
+        SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()),
+        SimpleDateFormat("dd-MM-yyyy", Locale.getDefault()),
+        SimpleDateFormat("d/M/yyyy", Locale.getDefault()),
+        SimpleDateFormat("dd MMMM yyyy", Locale("id", "ID")),
+        SimpleDateFormat("dd MMM yyyy", Locale("id", "ID"))
+    )
+    for (fmt in formats) {
+        try {
+            return fmt.parse(dateStr)
+        } catch (_: Exception) {}
+    }
+    return null
 }

@@ -3,6 +3,7 @@ package com.lintang.sarprasq.data.repository
 import android.content.Context
 import android.net.Uri
 import android.util.Log
+import com.google.android.gms.tasks.Task
 import com.google.firebase.database.DataSnapshot
 import com.google.firebase.database.DatabaseError
 import com.google.firebase.database.DatabaseReference
@@ -10,11 +11,6 @@ import com.google.firebase.database.FirebaseDatabase
 import com.google.firebase.database.ValueEventListener
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.storage.FirebaseStorage
-import com.lintang.sarprasq.util.CompressedImageResult
-import com.lintang.sarprasq.util.ImageCompressor
-import kotlinx.coroutines.suspendCancellableCoroutine
-import kotlin.coroutines.resume
-import kotlin.coroutines.resumeWithException
 import com.lintang.sarprasq.data.local.SarprasDao
 import com.lintang.sarprasq.data.local.getDefaultKategoriList
 import com.lintang.sarprasq.data.local.getDefaultRuangList
@@ -34,11 +30,33 @@ import com.lintang.sarprasq.data.model.StatusPenanganan
 import com.lintang.sarprasq.data.model.SubKategoriMaster
 import com.lintang.sarprasq.data.model.SuratArsip
 import com.lintang.sarprasq.data.model.UrgensiMaster
+import com.lintang.sarprasq.util.CompressedImageResult
+import com.lintang.sarprasq.util.ImageCompressor
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
+
+data class ProfileInfoSync(
+    val name: String = "",
+    val nip: String = "",
+    val sekolah: String = "",
+    val program: String = "",
+    val profileImagePath: String? = null
+)
+
+private suspend fun <T> Task<T>.awaitTask(): T = suspendCancellableCoroutine { continuation ->
+    addOnSuccessListener { result ->
+        if (continuation.isActive) continuation.resume(result)
+    }
+    addOnFailureListener { exception ->
+        if (continuation.isActive) continuation.resumeWithException(exception)
+    }
+}
 
 class SarprasRepository(
     private val dao: SarprasDao,
@@ -1042,7 +1060,8 @@ class SarprasRepository(
         urgensiList: List<UrgensiMaster> = emptyList(),
         kategoriList: List<KategoriMaster> = emptyList(),
         satuanList: List<SatuanMaster> = emptyList(),
-        damageReportsList: List<DamageReport> = emptyList()
+        damageReportsList: List<DamageReport> = emptyList(),
+        projectTasksList: List<ProjectTask> = emptyList()
     ) {
         // 1. Local Room DB
         dao.deleteAllHelpdeskReports()
@@ -1055,6 +1074,7 @@ class SarprasRepository(
         dao.deleteAllKategori()
         if (satuanList.isNotEmpty()) dao.deleteAllSatuan()
         if (damageReportsList.isNotEmpty()) dao.deleteAllDamageReports()
+        if (projectTasksList.isNotEmpty()) dao.deleteAllProjectTasks()
 
         if (reports.isNotEmpty()) dao.insertHelpdeskReports(reports)
         if (plans.isNotEmpty()) dao.insertActionPlans(plans)
@@ -1066,6 +1086,7 @@ class SarprasRepository(
         if (kategoriList.isNotEmpty()) dao.insertKategoriList(kategoriList)
         if (satuanList.isNotEmpty()) dao.insertSatuanList(satuanList)
         if (damageReportsList.isNotEmpty()) dao.insertDamageReportList(damageReportsList)
+        if (projectTasksList.isNotEmpty()) dao.insertProjectTasks(projectTasksList)
 
         // 2. Sync full state to Firebase (Dual-Write: RTDB & Cloud Firestore)
         try {
@@ -1117,6 +1138,11 @@ class SarprasRepository(
                 if (damageMap.isNotEmpty()) {
                     ref.child("damage_reports").setValue(damageMap)
                 }
+
+                val taskMap = projectTasksList.associateBy { it.id.toString() }
+                if (taskMap.isNotEmpty()) {
+                    ref.child("project_tasks").setValue(taskMap)
+                }
             }
         } catch (e: Exception) {
             Log.e("SarprasRepository", "Failed to restore full state to RTDB: ${e.message}")
@@ -1134,6 +1160,7 @@ class SarprasRepository(
                 urgensiList.forEach { item -> fs.collection("master_urgensi").document(item.id.toString()).set(item) }
                 kategoriList.forEach { item -> fs.collection("master_kategori").document(item.id.toString()).set(item) }
                 damageReportsList.forEach { item -> fs.collection("damage_reports").document(item.id.toString()).set(item) }
+                projectTasksList.forEach { item -> fs.collection("project_tasks").document(item.id.toString()).set(item) }
             }
         } catch (e: Exception) {
             Log.e("SarprasRepository", "Failed to restore full state to Firestore: ${e.message}")
@@ -1142,6 +1169,8 @@ class SarprasRepository(
 
     // --- PROJECT TASKS / TO-DO LIST ---
     val allProjectTasks: Flow<List<ProjectTask>> = dao.getAllProjectTasks()
+
+    suspend fun getAllProjectTasksList(): List<ProjectTask> = dao.getAllProjectTasksList()
 
     suspend fun insertProjectTask(task: ProjectTask): Long {
         val id = dao.insertProjectTask(task)
@@ -1329,7 +1358,114 @@ class SarprasRepository(
         }
     }
 
-    fun syncAllToFirebase(onComplete: (Boolean, String) -> Unit) {
+    // --- Profile Sync Helper ---
+    fun syncProfileToCloud(profile: ProfileInfoSync) {
+        externalScope.launch {
+            try {
+                val profMap = mapOf(
+                    "petugas_name" to profile.name,
+                    "petugas_nip" to profile.nip,
+                    "sekolah_name" to profile.sekolah,
+                    "program_name" to profile.program,
+                    "profile_image_path" to (profile.profileImagePath ?: "")
+                )
+                getDatabaseRef()?.child("profile_info")?.setValue(profMap)
+                getFirestoreInstance()?.collection("profile_info")?.document("petugas")?.set(profMap)
+            } catch (e: Exception) {
+                Log.e("SarprasRepository", "Failed to sync profile to cloud: ${e.message}")
+            }
+        }
+    }
+
+    private suspend fun <T : Any> fetchCollection(
+        fs: FirebaseFirestore?,
+        ref: DatabaseReference?,
+        collectionName: String,
+        clazz: Class<T>
+    ): List<T> {
+        if (fs != null) {
+            try {
+                val snapshot = fs.collection(collectionName).get().awaitTask()
+                val items = snapshot.documents.mapNotNull { doc ->
+                    try {
+                        doc.toObject(clazz)
+                    } catch (e: Exception) {
+                        null
+                    }
+                }
+                if (items.isNotEmpty()) return items
+            } catch (e: Exception) {
+                Log.w("SarprasRepository", "Firestore fetch $collectionName failed: ${e.message}")
+            }
+        }
+
+        if (ref != null) {
+            try {
+                val snapshot = ref.child(collectionName).get().awaitTask()
+                val items = snapshot.children.mapNotNull { child ->
+                    try {
+                        child.getValue(clazz)
+                    } catch (e: Exception) {
+                        null
+                    }
+                }
+                if (items.isNotEmpty()) return items
+            } catch (e: Exception) {
+                Log.w("SarprasRepository", "RTDB fetch $collectionName failed: ${e.message}")
+            }
+        }
+
+        return emptyList()
+    }
+
+    private suspend fun fetchProfileFromCloud(
+        fs: FirebaseFirestore?,
+        ref: DatabaseReference?
+    ): ProfileInfoSync? {
+        if (fs != null) {
+            try {
+                val doc = fs.collection("profile_info").document("petugas").get().awaitTask()
+                if (doc.exists()) {
+                    val name = doc.getString("petugas_name") ?: doc.getString("namaPetugas") ?: ""
+                    val nip = doc.getString("petugas_nip") ?: doc.getString("nipPetugas") ?: ""
+                    val sekolah = doc.getString("sekolah_name") ?: doc.getString("namaSekolah") ?: ""
+                    val program = doc.getString("program_name") ?: doc.getString("namaProgram") ?: ""
+                    val imagePath = doc.getString("profile_image_path") ?: doc.getString("profileImagePath")
+                    if (name.isNotBlank()) {
+                        return ProfileInfoSync(name, nip, sekolah, program, imagePath)
+                    }
+                }
+            } catch (e: Exception) {
+                Log.w("SarprasRepository", "Firestore profile fetch failed: ${e.message}")
+            }
+        }
+
+        if (ref != null) {
+            try {
+                val snapshot = ref.child("profile_info").get().awaitTask()
+                if (snapshot.exists()) {
+                    val name = snapshot.child("petugas_name").getValue(String::class.java) ?: snapshot.child("namaPetugas").getValue(String::class.java) ?: ""
+                    val nip = snapshot.child("petugas_nip").getValue(String::class.java) ?: snapshot.child("nipPetugas").getValue(String::class.java) ?: ""
+                    val sekolah = snapshot.child("sekolah_name").getValue(String::class.java) ?: snapshot.child("namaSekolah").getValue(String::class.java) ?: ""
+                    val program = snapshot.child("program_name").getValue(String::class.java) ?: snapshot.child("namaProgram").getValue(String::class.java) ?: ""
+                    val imagePath = snapshot.child("profile_image_path").getValue(String::class.java) ?: snapshot.child("profileImagePath").getValue(String::class.java)
+                    if (name.isNotBlank()) {
+                        return ProfileInfoSync(name, nip, sekolah, program, imagePath)
+                    }
+                }
+            } catch (e: Exception) {
+                Log.w("SarprasRepository", "RTDB profile fetch failed: ${e.message}")
+            }
+        }
+
+        return null
+    }
+
+    fun syncAllToFirebase(
+        currentProfile: ProfileInfoSync? = null,
+        onProfileRestored: ((ProfileInfoSync) -> Unit)? = null,
+        onComplete: (Boolean, String) -> Unit
+    ) {
         externalScope.launch {
             try {
                 val ref = getDatabaseRef()
@@ -1342,41 +1478,170 @@ class SarprasRepository(
                     return@launch
                 }
 
-                val reports = dao.getAllHelpdeskReportsList()
-                val plans = dao.getAllActionPlansList()
-                val suratList = dao.getAllSuratArsipList()
-                val peminjamanList = dao.getAllPeminjamanMakroList()
-                val damageReportsList = dao.getAllDamageReportsList()
+                // --- STAGE 1: PULL / RESTORE FROM CLOUD TO ROOM LOCAL DB ---
+                var restoredHelpdeskCount = 0
+                var restoredActionPlanCount = 0
+                var restoredDamageReportCount = 0
+                var restoredProjectTaskCount = 0
+                var restoredSuratCount = 0
+                var restoredPeminjamanCount = 0
+                var profileRestoredFlag = false
 
-                // 1. Write to RTDB
-                if (ref != null) {
-                    val helpdeskMap = reports.associateBy { it.id.toString() }
-                    if (helpdeskMap.isNotEmpty()) ref.child("helpdesk_reports").setValue(helpdeskMap)
-
-                    val planMap = plans.associateBy { it.id.toString() }
-                    if (planMap.isNotEmpty()) ref.child("action_plans").setValue(planMap)
-
-                    val suratMap = suratList.associateBy { it.id.toString() }
-                    if (suratMap.isNotEmpty()) ref.child("surat_arsip").setValue(suratMap)
-
-                    val peminjamanMap = peminjamanList.associateBy { it.id.toString() }
-                    if (peminjamanMap.isNotEmpty()) ref.child("peminjaman_makro").setValue(peminjamanMap)
-
-                    val damageMap = damageReportsList.associateBy { it.id.toString() }
-                    if (damageMap.isNotEmpty()) ref.child("damage_reports").setValue(damageMap)
+                // 1. Helpdesk
+                val cloudHelpdesk = fetchCollection(fs, ref, "helpdesk_reports", HelpdeskReport::class.java)
+                if (cloudHelpdesk.isNotEmpty()) {
+                    dao.insertHelpdeskReports(cloudHelpdesk)
+                    restoredHelpdeskCount = cloudHelpdesk.size
                 }
 
-                // 2. Write to Cloud Firestore
+                // 2. Proyek Revitalisasi / Action Plans
+                val cloudPlans = fetchCollection(fs, ref, "action_plans", ActionPlan::class.java)
+                if (cloudPlans.isNotEmpty()) {
+                    dao.insertActionPlans(cloudPlans)
+                    restoredActionPlanCount = cloudPlans.size
+                }
+
+                // 3. Rehab / Damage Reports
+                val cloudDamage = fetchCollection(fs, ref, "damage_reports", DamageReport::class.java)
+                if (cloudDamage.isNotEmpty()) {
+                    dao.insertDamageReportList(cloudDamage)
+                    restoredDamageReportCount = cloudDamage.size
+                }
+
+                // 4. To-Do Tasks / Project Tasks
+                val cloudTasks = fetchCollection(fs, ref, "project_tasks", ProjectTask::class.java)
+                if (cloudTasks.isNotEmpty()) {
+                    dao.insertProjectTasks(cloudTasks)
+                    restoredProjectTaskCount = cloudTasks.size
+                }
+
+                // 5. Surat Arsip
+                val cloudSurat = fetchCollection(fs, ref, "surat_arsip", SuratArsip::class.java)
+                if (cloudSurat.isNotEmpty()) {
+                    dao.insertSuratArsipList(cloudSurat)
+                    restoredSuratCount = cloudSurat.size
+                }
+
+                // 6. Peminjaman Makro
+                val cloudPeminjaman = fetchCollection(fs, ref, "peminjaman_makro", PeminjamanMakro::class.java)
+                if (cloudPeminjaman.isNotEmpty()) {
+                    dao.insertPeminjamanMakroList(cloudPeminjaman)
+                    restoredPeminjamanCount = cloudPeminjaman.size
+                }
+
+                // 7. Master Data Collections
+                val cloudRuang = fetchCollection(fs, ref, "master_ruang", Ruang::class.java)
+                if (cloudRuang.isNotEmpty()) dao.insertRuangList(cloudRuang)
+
+                val cloudStatus = fetchCollection(fs, ref, "master_status_penanganan", StatusPenanganan::class.java)
+                if (cloudStatus.isNotEmpty()) dao.insertStatusPenangananList(cloudStatus)
+
+                val cloudUrgensi = fetchCollection(fs, ref, "master_urgensi", UrgensiMaster::class.java)
+                if (cloudUrgensi.isNotEmpty()) dao.insertUrgensiList(cloudUrgensi)
+
+                val cloudKat = fetchCollection(fs, ref, "master_kategori", KategoriMaster::class.java)
+                if (cloudKat.isNotEmpty()) dao.insertKategoriList(cloudKat)
+
+                val cloudSubKat = fetchCollection(fs, ref, "master_subkategori", SubKategoriMaster::class.java)
+                if (cloudSubKat.isNotEmpty()) dao.insertSubKategoriList(cloudSubKat)
+
+                val cloudSatuan = fetchCollection(fs, ref, "master_satuan", SatuanMaster::class.java)
+                if (cloudSatuan.isNotEmpty()) dao.insertSatuanList(cloudSatuan)
+
+                // 8. Profile Info
+                val fetchedProfile = fetchProfileFromCloud(fs, ref)
+                if (fetchedProfile != null && fetchedProfile.name.isNotBlank()) {
+                    profileRestoredFlag = true
+                    withContext(Dispatchers.Main) {
+                        onProfileRestored?.invoke(fetchedProfile)
+                    }
+                }
+
+                // --- STAGE 2: PUSH ALL CONSOLIDATED LOCAL DB TO CLOUD ---
+                val reports = dao.getAllHelpdeskReportsList()
+                val plans = dao.getAllActionPlansList()
+                val damageReportsList = dao.getAllDamageReportsList()
+                val tasks = dao.getAllProjectTasksList()
+                val suratList = dao.getAllSuratArsipList()
+                val peminjamanList = dao.getAllPeminjamanMakroList()
+                val ruangList = dao.getAllRuangList()
+                val statusList = dao.getAllStatusPenangananList()
+                val urgensiList = dao.getAllUrgensiList()
+                val kategoriList = dao.getAllKategoriList()
+                val subKategoriList = dao.getAllSubKategoriList()
+                val satuanList = dao.getAllSatuanList()
+
+                // Push to RTDB
+                if (ref != null) {
+                    if (reports.isNotEmpty()) ref.child("helpdesk_reports").setValue(reports.associateBy { it.id.toString() })
+                    if (plans.isNotEmpty()) ref.child("action_plans").setValue(plans.associateBy { it.id.toString() })
+                    if (damageReportsList.isNotEmpty()) ref.child("damage_reports").setValue(damageReportsList.associateBy { it.id.toString() })
+                    if (tasks.isNotEmpty()) ref.child("project_tasks").setValue(tasks.associateBy { it.id.toString() })
+                    if (suratList.isNotEmpty()) ref.child("surat_arsip").setValue(suratList.associateBy { it.id.toString() })
+                    if (peminjamanList.isNotEmpty()) ref.child("peminjaman_makro").setValue(peminjamanList.associateBy { it.id.toString() })
+                    if (ruangList.isNotEmpty()) ref.child("master_ruang").setValue(ruangList.associateBy { it.id.toString() })
+                    if (statusList.isNotEmpty()) ref.child("master_status_penanganan").setValue(statusList.associateBy { it.id.toString() })
+                    if (urgensiList.isNotEmpty()) ref.child("master_urgensi").setValue(urgensiList.associateBy { it.id.toString() })
+                    if (kategoriList.isNotEmpty()) ref.child("master_kategori").setValue(kategoriList.associateBy { it.id.toString() })
+                    if (subKategoriList.isNotEmpty()) ref.child("master_subkategori").setValue(subKategoriList.associateBy { it.id.toString() })
+                    if (satuanList.isNotEmpty()) ref.child("master_satuan").setValue(satuanList.associateBy { it.id.toString() })
+
+                    val profToPush = fetchedProfile ?: currentProfile
+                    if (profToPush != null) {
+                        val profMap = mapOf(
+                            "petugas_name" to profToPush.name,
+                            "petugas_nip" to profToPush.nip,
+                            "sekolah_name" to profToPush.sekolah,
+                            "program_name" to profToPush.program,
+                            "profile_image_path" to (profToPush.profileImagePath ?: "")
+                        )
+                        ref.child("profile_info").setValue(profMap)
+                    }
+                }
+
+                // Push to Cloud Firestore
                 if (fs != null) {
                     reports.forEach { item -> fs.collection("helpdesk_reports").document(item.id.toString()).set(item) }
                     plans.forEach { item -> fs.collection("action_plans").document(item.id.toString()).set(item) }
+                    damageReportsList.forEach { item -> fs.collection("damage_reports").document(item.id.toString()).set(item) }
+                    tasks.forEach { item -> fs.collection("project_tasks").document(item.id.toString()).set(item) }
                     suratList.forEach { item -> fs.collection("surat_arsip").document(item.id.toString()).set(item) }
                     peminjamanList.forEach { item -> fs.collection("peminjaman_makro").document(item.id.toString()).set(item) }
-                    damageReportsList.forEach { item -> fs.collection("damage_reports").document(item.id.toString()).set(item) }
+                    ruangList.forEach { item -> fs.collection("master_ruang").document(item.id.toString()).set(item) }
+                    statusList.forEach { item -> fs.collection("master_status_penanganan").document(item.id.toString()).set(item) }
+                    urgensiList.forEach { item -> fs.collection("master_urgensi").document(item.id.toString()).set(item) }
+                    kategoriList.forEach { item -> fs.collection("master_kategori").document(item.id.toString()).set(item) }
+                    subKategoriList.forEach { item -> fs.collection("master_subkategori").document(item.id.toString()).set(item) }
+                    satuanList.forEach { item -> fs.collection("master_satuan").document(item.id.toString()).set(item) }
+
+                    val profToPush = fetchedProfile ?: currentProfile
+                    if (profToPush != null) {
+                        val profMap = mapOf(
+                            "petugas_name" to profToPush.name,
+                            "petugas_nip" to profToPush.nip,
+                            "sekolah_name" to profToPush.sekolah,
+                            "program_name" to profToPush.program,
+                            "profile_image_path" to (profToPush.profileImagePath ?: "")
+                        )
+                        fs.collection("profile_info").document("petugas").set(profMap)
+                    }
+                }
+
+                val msg = StringBuilder()
+                msg.append("✓ Sinkronisasi & Pemulihan Cloud Berhasil!\n")
+                msg.append("• To-Do Task: ${tasks.size} item (${restoredProjectTaskCount} dipulihkan)\n")
+                msg.append("• Proyek Revitalisasi: ${plans.size} item (${restoredActionPlanCount} dipulihkan)\n")
+                msg.append("• Rehab Kerusakan: ${damageReportsList.size} item (${restoredDamageReportCount} dipulihkan)\n")
+                msg.append("• Helpdesk: ${reports.size} item (${restoredHelpdeskCount} dipulihkan)\n")
+                msg.append("• Surat & Peminjaman: ${suratList.size + peminjamanList.size} item\n")
+                if (profileRestoredFlag) {
+                    msg.append("• Profil Petugas: Terhubung & Dipulihkan dari Cloud")
+                } else {
+                    msg.append("• Profil Petugas: Tersinkron dengan Cloud")
                 }
 
                 withContext(Dispatchers.Main) {
-                    onComplete(true, "Data lokal berhasil disinkronkan ke Realtime Database & Cloud Firestore!")
+                    onComplete(true, msg.toString())
                 }
             } catch (e: Exception) {
                 val err = e.localizedMessage ?: "Gagal menyinkronkan data ke Firebase."

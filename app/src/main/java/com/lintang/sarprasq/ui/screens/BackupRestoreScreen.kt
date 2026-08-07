@@ -5,9 +5,11 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.provider.OpenableColumns
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import java.util.zip.ZipInputStream
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -109,6 +111,7 @@ fun BackupRestoreScreen(
     var restoreInputJson by remember { mutableStateOf("") }
     var showConfirmRestoreDialog by remember { mutableStateOf(false) }
     var jsonToRestore by remember { mutableStateOf("") }
+    var selectedRestoreFileName by remember { mutableStateOf<String?>(null) }
     var showPreviewDialog by remember { mutableStateOf(false) }
     var itemToDelete by remember { mutableStateOf<BackupHistoryRecord?>(null) }
     var filterDate by remember { mutableStateOf("") }
@@ -120,22 +123,48 @@ fun BackupRestoreScreen(
         }
     }
 
-    // File picker launcher for JSON file restore
+    // SAF Create Document Launcher for Export / Backup (Internal & External Storage)
+    val createDocumentLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("application/json")
+    ) { uri: Uri? ->
+        uri?.let { targetUri ->
+            viewModel.exportBackupToUri(
+                context = context,
+                targetUri = targetUri,
+                onSuccess = { _, count ->
+                    Toast.makeText(
+                        context,
+                        "✓ Cadangan data berhasil disimpan ke folder pilihan Anda ($count data)!",
+                        Toast.LENGTH_LONG
+                    ).show()
+                },
+                onError = { err ->
+                    Toast.makeText(
+                        context,
+                        "Gagal menyimpan berkas cadangan: $err",
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
+            )
+        }
+    }
+
+    // SAF Open Document Launcher for Import / Pemulihan Fleksibel Cari File
     val filePickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetContent()
+        contract = ActivityResultContracts.OpenDocument()
     ) { uri: Uri? ->
         uri?.let { fileUri ->
-            try {
-                val inputStream = context.contentResolver.openInputStream(fileUri)
-                val content = inputStream?.bufferedReader()?.use { it.readText() } ?: ""
-                if (content.isNotEmpty()) {
-                    jsonToRestore = content
-                    showConfirmRestoreDialog = true
-                } else {
-                    Toast.makeText(context, "File JSON kosong!", Toast.LENGTH_SHORT).show()
-                }
-            } catch (e: Exception) {
-                Toast.makeText(context, "Gagal membaca file: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
+            val result = readBackupFileContent(context, fileUri)
+            if (result != null && result.second.isNotBlank()) {
+                selectedRestoreFileName = result.first
+                jsonToRestore = result.second
+                showConfirmRestoreDialog = true
+            } else {
+                Toast.makeText(
+                    context,
+                    "Format file cadangan tidak valid atau berkas kosong!",
+                    Toast.LENGTH_LONG
+                ).show()
             }
         }
     }
@@ -526,10 +555,16 @@ fun BackupRestoreScreen(
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     Text(
-                        text = "Sinkronisasi Cloud Manual",
+                        text = "Sinkronisasi & Pemulihan Cloud (Dua Arah)",
                         fontSize = 13.sp,
                         fontWeight = FontWeight.Bold,
                         color = TextPrimary
+                    )
+
+                    Text(
+                        text = "Proses ini menarik seluruh koleksi data dari Firebase Cloud (To-Do, Proyek, Rehab, Helpdesk, Profil) ke perangkat lokal (Pull/Restore) serta mengunggah perubahan lokal ke server secara otomatis.",
+                        fontSize = 11.sp,
+                        color = TextSecondary
                     )
 
                     Row(
@@ -552,7 +587,7 @@ fun BackupRestoreScreen(
                     Button(
                         onClick = {
                             viewModel.manualSyncToFirestore { success, msg ->
-                                Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                                Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
                             }
                         },
                         modifier = Modifier.fillMaxWidth(),
@@ -621,17 +656,32 @@ fun BackupRestoreScreen(
 
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = "Manajemen Data Lokal",
+                            text = "Manajemen Data Lokal (SAF)",
                             fontSize = 15.sp,
                             fontWeight = FontWeight.Bold,
                             color = TextPrimary
                         )
                         Text(
-                            text = "Cadangkan atau pulihkan seluruh data database lokal dalam berkas JSON",
+                            text = "Bebas pilih folder penyimpanan (Internal/Eksternal) & cari file pemulihan fleksibel",
                             fontSize = 11.sp,
                             color = TextSecondary
                         )
                     }
+                }
+
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(PastelMint.copy(alpha = 0.25f))
+                        .border(1.dp, PastelMintDark.copy(alpha = 0.3f), RoundedCornerShape(8.dp))
+                        .padding(10.dp)
+                ) {
+                    Text(
+                        text = "💡 Bebas memilih folder tujuan penyimpanan (Memori Internal/Kartu SD) saat Backup, dan dapat menelusuri file cadangan (.json/.zip) secara fleksibel dari direktori manapun di perangkat Anda.",
+                        fontSize = 11.sp,
+                        color = TextPrimary
+                    )
                 }
 
                 // --- TOMBOL AKSI UTAMA (SATU BARIS: BACKUP & IMPORT) ---
@@ -642,15 +692,9 @@ fun BackupRestoreScreen(
                     // Tombol Backup
                     Button(
                         onClick = {
-                            viewModel.exportBackupJson(context) { jsonStr, file ->
-                                latestJsonString = jsonStr
-                                latestFile = file
-                                Toast.makeText(
-                                    context,
-                                    "Backup berhasil dibuat & dicatat di riwayat!",
-                                    Toast.LENGTH_SHORT
-                                ).show()
-                            }
+                            val timeStampStr = java.text.SimpleDateFormat("yyyyMMdd_HHmmss", java.util.Locale.getDefault()).format(java.util.Date())
+                            val defaultFileName = "SarprasQ_Backup_$timeStampStr.json"
+                            createDocumentLauncher.launch(defaultFileName)
                         },
                         modifier = Modifier.weight(1f),
                         colors = ButtonDefaults.buttonColors(containerColor = PastelMintDark),
@@ -662,12 +706,16 @@ fun BackupRestoreScreen(
                             modifier = Modifier.size(16.dp)
                         )
                         Spacer(modifier = Modifier.width(6.dp))
-                        Text("Backup", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        Text("Backup (Pilih Folder)", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                     }
 
                     // Tombol Import
                     Button(
-                        onClick = { filePickerLauncher.launch("*/*") },
+                        onClick = {
+                            filePickerLauncher.launch(
+                                arrayOf("application/json", "text/plain", "application/zip", "application/x-zip-compressed", "*/*")
+                            )
+                        },
                         modifier = Modifier.weight(1f),
                         colors = ButtonDefaults.buttonColors(containerColor = PastelLavenderDark),
                         shape = RoundedCornerShape(10.dp)
@@ -678,7 +726,7 @@ fun BackupRestoreScreen(
                             modifier = Modifier.size(16.dp)
                         )
                         Spacer(modifier = Modifier.width(6.dp))
-                        Text("Import", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        Text("Import (Cari File)", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                     }
                 }
             }
@@ -995,11 +1043,21 @@ fun BackupRestoreScreen(
                 Text("Konfirmasi Restore Data", fontSize = 16.sp, fontWeight = FontWeight.Bold)
             },
             text = {
-                Text(
-                    text = "PERHATIAN: Memulihkan data dari cadangan akan memperbarui dan mengganti data lama di database SarprasQ. Apakah Anda yakin ingin melanjutkan?",
-                    fontSize = 13.sp,
-                    color = TextPrimary
-                )
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    if (!selectedRestoreFileName.isNullOrBlank()) {
+                        Text(
+                            text = "Berkas Cadangan: $selectedRestoreFileName",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = PastelLavenderDark
+                        )
+                    }
+                    Text(
+                        text = "PERHATIAN: Memulihkan data dari cadangan akan memperbarui dan mengganti data lokal di database SarprasQ. Apakah Anda yakin ingin melanjutkan?",
+                        fontSize = 13.sp,
+                        color = TextPrimary
+                    )
+                }
             },
             confirmButton = {
                 Button(
@@ -1010,7 +1068,7 @@ fun BackupRestoreScreen(
                             onSuccess = { count ->
                                 Toast.makeText(
                                     context,
-                                    "Berhasil memulihkan $count item data SarprasQ!",
+                                    "✓ Berhasil memulihkan $count item data SarprasQ dari ${selectedRestoreFileName ?: "file cadangan"}!",
                                     Toast.LENGTH_LONG
                                 ).show()
                             },
@@ -1078,4 +1136,51 @@ private fun shareJsonData(context: Context, jsonStr: String) {
     } catch (e: Exception) {
         Toast.makeText(context, "Gagal membagikan: ${e.localizedMessage}", Toast.LENGTH_SHORT).show()
     }
+}
+
+private fun readBackupFileContent(context: Context, uri: Uri): Pair<String, String>? {
+    var fileName = "cadangan_sarprasq.json"
+    try {
+        context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+            val nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+            if (nameIndex != -1 && cursor.moveToFirst()) {
+                val fetchedName = cursor.getString(nameIndex)
+                if (!fetchedName.isNullOrBlank()) {
+                    fileName = fetchedName
+                }
+            }
+        }
+    } catch (e: Exception) {
+        // Fallback name
+    }
+
+    try {
+        if (fileName.endsWith(".zip", ignoreCase = true)) {
+            context.contentResolver.openInputStream(uri)?.use { inputStream ->
+                ZipInputStream(inputStream).use { zipStream ->
+                    var entry = zipStream.nextEntry
+                    while (entry != null) {
+                        if (!entry.isDirectory && (entry.name.endsWith(".json", ignoreCase = true) || entry.name.endsWith(".txt", ignoreCase = true))) {
+                            val textContent = zipStream.bufferedReader(Charsets.UTF_8).readText()
+                            if (textContent.isNotBlank()) {
+                                return Pair(entry.name, textContent)
+                            }
+                        }
+                        zipStream.closeEntry()
+                        entry = zipStream.nextEntry
+                    }
+                }
+            }
+        }
+
+        context.contentResolver.openInputStream(uri)?.use { inputStream ->
+            val content = inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
+            if (content.isNotBlank()) {
+                return Pair(fileName, content)
+            }
+        }
+    } catch (e: Exception) {
+        e.printStackTrace()
+    }
+    return null
 }

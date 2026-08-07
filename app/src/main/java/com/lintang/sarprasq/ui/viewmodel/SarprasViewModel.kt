@@ -25,6 +25,7 @@ import com.lintang.sarprasq.data.model.StatusPenanganan
 import com.lintang.sarprasq.data.model.SuratArsip
 import com.lintang.sarprasq.data.model.UrgensiMaster
 import com.lintang.sarprasq.data.repository.SarprasRepository
+import com.lintang.sarprasq.data.repository.ProfileInfoSync
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -270,15 +271,43 @@ class SarprasViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch(kotlinx.coroutines.Dispatchers.Main) {
             isSyncing.value = true
             try {
-                repository.syncAllToFirebase { success, message ->
-                    if (success) {
-                        val nowStr = java.text.SimpleDateFormat("dd MMM yyyy, HH:mm", java.util.Locale("id", "ID")).format(java.util.Date()) + " WIB"
-                        prefs.edit().putString("last_cloud_sync_time", nowStr).apply()
-                        lastCloudSyncTime.value = nowStr
+                val currentProf = ProfileInfoSync(
+                    name = namaPetugas.value,
+                    nip = nipPetugas.value,
+                    sekolah = namaSekolah.value,
+                    program = namaProgram.value,
+                    profileImagePath = profileImagePath.value
+                )
+                repository.syncAllToFirebase(
+                    currentProfile = currentProf,
+                    onProfileRestored = { restoredProf ->
+                        if (restoredProf.name.isNotBlank()) {
+                            namaPetugas.value = restoredProf.name
+                            nipPetugas.value = restoredProf.nip
+                            namaSekolah.value = restoredProf.sekolah
+                            namaProgram.value = restoredProf.program
+                            prefs.edit()
+                                .putString("petugas_name", restoredProf.name)
+                                .putString("petugas_nip", restoredProf.nip)
+                                .putString("sekolah_name", restoredProf.sekolah)
+                                .putString("program_name", restoredProf.program)
+                                .apply()
+                        }
+                        if (!restoredProf.profileImagePath.isNullOrBlank()) {
+                            profileImagePath.value = restoredProf.profileImagePath
+                            prefs.edit().putString("profile_image_path", restoredProf.profileImagePath).apply()
+                        }
+                    },
+                    onComplete = { success, message ->
+                        if (success) {
+                            val nowStr = java.text.SimpleDateFormat("dd MMM yyyy, HH:mm", java.util.Locale("id", "ID")).format(java.util.Date()) + " WIB"
+                            prefs.edit().putString("last_cloud_sync_time", nowStr).apply()
+                            lastCloudSyncTime.value = nowStr
+                        }
+                        isSyncing.value = false
+                        onComplete?.invoke(success, message)
                     }
-                    isSyncing.value = false
-                    onComplete?.invoke(success, message)
-                }
+                )
             } catch (e: Exception) {
                 isSyncing.value = false
                 val errMsg = e.localizedMessage ?: "Gagal menyinkronkan data ke Firebase."
@@ -304,6 +333,16 @@ class SarprasViewModel(application: Application) : AndroidViewModel(application)
             .putString("sekolah_name", sekolah)
             .putString("program_name", program)
             .apply()
+
+        repository.syncProfileToCloud(
+            ProfileInfoSync(
+                name = name,
+                nip = nip,
+                sekolah = sekolah,
+                program = program,
+                profileImagePath = profileImagePath.value
+            )
+        )
     }
 
     fun updateProfileImage(path: String?) {
@@ -311,6 +350,16 @@ class SarprasViewModel(application: Application) : AndroidViewModel(application)
         prefs.edit()
             .putString("profile_image_path", path)
             .apply()
+
+        repository.syncProfileToCloud(
+            ProfileInfoSync(
+                name = namaPetugas.value,
+                nip = nipPetugas.value,
+                sekolah = namaSekolah.value,
+                program = namaProgram.value,
+                profileImagePath = path
+            )
+        )
     }
 
     // --- Search & Filters ---
@@ -1165,6 +1214,206 @@ class SarprasViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    fun exportBackupToUri(
+        context: Context,
+        targetUri: Uri,
+        onSuccess: (String, Int) -> Unit,
+        onError: (String) -> Unit
+    ) {
+        viewModelScope.launch {
+            try {
+                val helpdeskList = repository.getAllHelpdeskReportsList()
+                val actionList = repository.getAllActionPlansList()
+                val suratList = repository.getAllSuratArsipList()
+                val peminjamanList = repository.getAllPeminjamanMakroList()
+                val ruangList = repository.getAllRuangList()
+                val statusList = repository.getAllStatusPenangananList()
+                val urgensiList = repository.getAllUrgensiList()
+                val kategoriList = repository.getAllKategoriList()
+                val damageList = repository.getAllDamageReportsList()
+                val taskList = repository.getAllProjectTasksList()
+
+                val rootJson = JSONObject()
+                rootJson.put("app", "SarprasQ")
+                rootJson.put("version", 3)
+
+                val dateFormat = SimpleDateFormat("dd MMMM yyyy, HH:mm 'WIB'", Locale("id", "ID"))
+                val formattedTime = dateFormat.format(Date())
+                rootJson.put("exportedAt", formattedTime)
+
+                // Helpdesk
+                val helpdeskArr = JSONArray()
+                for (h in helpdeskList) {
+                    val obj = JSONObject()
+                    obj.put("id", h.id)
+                    obj.put("tanggal", h.tanggal)
+                    obj.put("pelapor", h.pelapor)
+                    obj.put("lokasi", h.lokasi)
+                    obj.put("deskripsi", h.deskripsi)
+                    obj.put("urgensi", h.urgensi)
+                    obj.put("status", h.status)
+                    obj.put("tindakan", h.tindakan)
+                    obj.put("alasanPending", h.alasanPending ?: "")
+                    obj.put("estimasiEksekusi", h.estimasiEksekusi ?: "")
+                    obj.put("timestamp", h.timestamp)
+                    helpdeskArr.put(obj)
+                }
+                rootJson.put("helpdeskReports", helpdeskArr)
+
+                // Action Plans
+                val actionArr = JSONArray()
+                for (a in actionList) {
+                    val obj = JSONObject()
+                    obj.put("id", a.id)
+                    obj.put("agenda", a.agenda)
+                    obj.put("kategori", a.kategori)
+                    obj.put("targetWaktu", a.targetWaktu)
+                    obj.put("tanggalRealisasi", a.tanggalRealisasi)
+                    obj.put("statusProgres", a.statusProgres)
+                    obj.put("timestamp", a.timestamp)
+                    actionArr.put(obj)
+                }
+                rootJson.put("actionPlans", actionArr)
+
+                // Surat Arsip
+                val suratArr = JSONArray()
+                for (s in suratList) {
+                    val obj = JSONObject()
+                    obj.put("id", s.id)
+                    obj.put("nomorSurat", s.nomorSurat)
+                    obj.put("tanggalSurat", s.tanggalSurat)
+                    obj.put("perihal", s.perihal)
+                    obj.put("jenisSurat", s.jenisSurat)
+                    obj.put("statusArsip", s.statusArsip)
+                    obj.put("timestamp", s.timestamp)
+                    suratArr.put(obj)
+                }
+                rootJson.put("suratArsip", suratArr)
+
+                // Peminjaman Makro
+                val peminjamanArr = JSONArray()
+                for (p in peminjamanList) {
+                    val obj = JSONObject()
+                    obj.put("id", p.id)
+                    obj.put("bulanTahun", p.bulanTahun)
+                    obj.put("namaBarang", p.namaBarang)
+                    obj.put("jumlahPeminjaman", p.jumlahPeminjaman)
+                    obj.put("kondisi", p.kondisi)
+                    obj.put("timestamp", p.timestamp)
+                    peminjamanArr.put(obj)
+                }
+                rootJson.put("peminjamanMakro", peminjamanArr)
+
+                // Master Ruang
+                val ruangArr = JSONArray()
+                for (r in ruangList) {
+                    val obj = JSONObject()
+                    obj.put("id", r.id)
+                    obj.put("kodeRuang", r.kodeRuang)
+                    obj.put("namaRuang", r.namaRuang)
+                    obj.put("kategori", r.kategori)
+                    obj.put("penanggungJawab", r.penanggungJawab)
+                    obj.put("timestamp", r.timestamp)
+                    ruangArr.put(obj)
+                }
+                rootJson.put("masterRuang", ruangArr)
+
+                // Master Status
+                val statusArr = JSONArray()
+                for (st in statusList) {
+                    val obj = JSONObject()
+                    obj.put("id", st.id)
+                    obj.put("namaStatus", st.namaStatus)
+                    obj.put("deskripsi", st.deskripsi)
+                    obj.put("timestamp", st.timestamp)
+                    statusArr.put(obj)
+                }
+                rootJson.put("masterStatusPenanganan", statusArr)
+
+                // Master Urgensi
+                val urgensiArr = JSONArray()
+                for (u in urgensiList) {
+                    val obj = JSONObject()
+                    obj.put("id", u.id)
+                    obj.put("namaUrgensi", u.namaUrgensi)
+                    obj.put("deskripsi", u.deskripsi)
+                    obj.put("timestamp", u.timestamp)
+                    urgensiArr.put(obj)
+                }
+                rootJson.put("masterUrgensi", urgensiArr)
+
+                // Master Kategori
+                val katArr = JSONArray()
+                for (k in kategoriList) {
+                    val obj = JSONObject()
+                    obj.put("id", k.id)
+                    obj.put("namaKategori", k.namaKategori)
+                    obj.put("deskripsi", k.deskripsi)
+                    obj.put("timestamp", k.timestamp)
+                    katArr.put(obj)
+                }
+                rootJson.put("masterKategori", katArr)
+
+                // Damage Reports
+                val damageArr = JSONArray()
+                for (dm in damageList) {
+                    val obj = JSONObject()
+                    obj.put("id", dm.id)
+                    obj.put("roomId", dm.roomId)
+                    obj.put("namaRuang", dm.namaRuang)
+                    obj.put("namaPelapor", dm.namaPelapor)
+                    obj.put("namaItemKerusakan", dm.namaItemKerusakan)
+                    obj.put("tanggalLapor", dm.tanggalLapor)
+                    obj.put("statusPenanganan", dm.statusPenanganan)
+                    obj.put("ditanganiOleh", dm.ditanganiOleh)
+                    obj.put("tanggalSelesai", dm.tanggalSelesai)
+                    obj.put("keterangan", dm.keterangan)
+                    obj.put("timestamp", dm.timestamp)
+                    damageArr.put(obj)
+                }
+                rootJson.put("damageReports", damageArr)
+
+                // Project Tasks / To-Do
+                val taskArr = JSONArray()
+                for (t in taskList) {
+                    val obj = JSONObject()
+                    obj.put("id", t.id)
+                    obj.put("title", t.title)
+                    obj.put("type", t.type)
+                    obj.put("subKategori", t.subKategori)
+                    obj.put("notes", t.notes)
+                    obj.put("startDate", t.startDate)
+                    obj.put("endDate", t.endDate)
+                    obj.put("durasiHari", t.durasiHari)
+                    obj.put("bobotPersen", t.bobotPersen)
+                    obj.put("totalProgres", t.totalProgres)
+                    obj.put("isCompleted", t.isCompleted)
+                    obj.put("riwayatProgres", t.riwayatProgres)
+                    obj.put("timestamp", t.timestamp)
+                    taskArr.put(obj)
+                }
+                rootJson.put("projectTasks", taskArr)
+
+                val jsonString = rootJson.toString(2)
+
+                context.contentResolver.openOutputStream(targetUri)?.use { outputStream ->
+                    outputStream.write(jsonString.toByteArray(Charsets.UTF_8))
+                }
+
+                lastBackupInfo.value = formattedTime
+                prefs.edit().putString("last_backup_time", formattedTime).apply()
+
+                val totalRecordsCount = helpdeskList.size + actionList.size + suratList.size + peminjamanList.size + ruangList.size + statusList.size + urgensiList.size + kategoriList.size + damageList.size + taskList.size
+                addBackupHistoryRecord(formattedTime, totalRecordsCount, jsonString)
+
+                onSuccess(formattedTime, totalRecordsCount)
+            } catch (e: Exception) {
+                e.printStackTrace()
+                onError(e.localizedMessage ?: "Gagal menyimpan berkas cadangan")
+            }
+        }
+    }
+
     fun restoreBackupJson(
         jsonContent: String,
         onSuccess: (Int) -> Unit,
@@ -1342,6 +1591,31 @@ class SarprasViewModel(application: Application) : AndroidViewModel(application)
                     }
                 }
 
+                val taskList = mutableListOf<ProjectTask>()
+                if (rootObj.has("projectTasks")) {
+                    val arr = rootObj.getJSONArray("projectTasks")
+                    for (i in 0 until arr.length()) {
+                        val obj = arr.getJSONObject(i)
+                        taskList.add(
+                            ProjectTask(
+                                id = obj.optInt("id", 0),
+                                title = obj.optString("title", ""),
+                                type = obj.optString("type", "Harian"),
+                                subKategori = obj.optString("subKategori", ""),
+                                notes = obj.optString("notes", ""),
+                                startDate = obj.optString("startDate", ""),
+                                endDate = obj.optString("endDate", ""),
+                                durasiHari = obj.optInt("durasiHari", 1),
+                                bobotPersen = obj.optDouble("bobotPersen", 10.0),
+                                totalProgres = obj.optDouble("totalProgres", 0.0),
+                                isCompleted = obj.optBoolean("isCompleted", false),
+                                riwayatProgres = obj.optString("riwayatProgres", ""),
+                                timestamp = obj.optLong("timestamp", System.currentTimeMillis())
+                            )
+                        )
+                    }
+                }
+
                 repository.restoreAllData(
                     reports = reports,
                     plans = plans,
@@ -1351,9 +1625,10 @@ class SarprasViewModel(application: Application) : AndroidViewModel(application)
                     statusPenangananList = statusList,
                     urgensiList = urgensiList,
                     kategoriList = kategoriList,
-                    damageReportsList = damageList
+                    damageReportsList = damageList,
+                    projectTasksList = taskList
                 )
-                val totalRestored = reports.size + plans.size + suratList.size + peminjamanList.size + ruangList.size + statusList.size + urgensiList.size + kategoriList.size + damageList.size
+                val totalRestored = reports.size + plans.size + suratList.size + peminjamanList.size + ruangList.size + statusList.size + urgensiList.size + kategoriList.size + damageList.size + taskList.size
                 onSuccess(totalRestored)
             } catch (e: Exception) {
                 e.printStackTrace()

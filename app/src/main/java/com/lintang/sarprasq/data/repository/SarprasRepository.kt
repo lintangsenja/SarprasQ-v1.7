@@ -73,7 +73,12 @@ class SarprasRepository(
         try {
             firebaseDb = FirebaseDatabase.getInstance("https://sarpras-134d7-default-rtdb.asia-southeast1.firebasedatabase.app")
             sarprasRef = firebaseDb?.getReference("sarprasq")
-            firestoreDb = FirebaseFirestore.getInstance()
+            firestoreDb = try {
+                FirebaseFirestore.getInstance()
+            } catch (e: Throwable) {
+                Log.w("SarprasRepository", "Firestore not available on device: ${e.message}")
+                null
+            }
             attachRealtimeSyncListeners()
         } catch (e: Exception) {
             Log.e("SarprasRepository", "Firebase initialization error: ${e.message}")
@@ -92,8 +97,8 @@ class SarprasRepository(
     fun getFirestoreInstance(): FirebaseFirestore? {
         return try {
             firestoreDb ?: FirebaseFirestore.getInstance()
-        } catch (e: Exception) {
-            Log.e("SarprasRepository", "Error resolving Firestore instance: ${e.message}")
+        } catch (e: Throwable) {
+            Log.w("SarprasRepository", "Error resolving Firestore instance: ${e.message}")
             null
         }
     }
@@ -1325,7 +1330,7 @@ class SarprasRepository(
                         isRealtimeListenerActive = true
                         realtimeListenerError = null
                         externalScope.launch(Dispatchers.Main) {
-                            onResult(true, "Terhubung ke Firebase Realtime Database & Firestore - Sync Dual-Database Aktif.", finalLatency)
+                            onResult(true, "Terhubung ke Firebase Realtime Database (Cloud Sync Aktif).", finalLatency)
                         }
                     }
                     .addOnFailureListener { ex ->

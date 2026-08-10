@@ -16,6 +16,7 @@ import androidx.core.content.FileProvider
 import com.lintang.sarprasq.data.model.ActionPlan
 import com.lintang.sarprasq.data.model.HelpdeskReport
 import com.lintang.sarprasq.data.model.PeminjamanMakro
+import com.lintang.sarprasq.data.model.ProjectTask
 import com.lintang.sarprasq.data.model.Ruang
 import com.lintang.sarprasq.data.model.SuratArsip
 import java.io.ByteArrayOutputStream
@@ -159,7 +160,8 @@ object ReportExporter {
         actionPlanList: List<ActionPlan>,
         ruangList: List<Ruang>,
         peminjamanList: List<PeminjamanMakro>,
-        suratList: List<SuratArsip>
+        suratList: List<SuratArsip>,
+        projectTaskList: List<ProjectTask> = emptyList()
     ): ExportedFileResult? {
         val fileName = "Laporan_SarprasQ_${filter.category.name}_${getFileTimestamp()}.pdf"
 
@@ -237,16 +239,36 @@ object ReportExporter {
                     canvas.drawText("Total Laporan: $total item  |  Belum Diproses: $belum  |  Dalam Perbaikan: $proses  |  Selesai: $selesai  |  Urgensi Darurat: $darurat", 50f, currentY + 32f, textPaint)
                 }
                 ReportCategory.ACTION_PLAN -> {
-                    val total = actionPlanList.size
+                    val totalAction = actionPlanList.size
+                    val totalTask = projectTaskList.size
+                    val total = totalAction + totalTask
                     val totalEst = actionPlanList.sumOf {
                         it.estimasiAnggaran?.replace(Regex("[^0-9]"), "")?.toDoubleOrNull() ?: 0.0
                     }
-                    val proses = actionPlanList.count { !it.statusProgres.contains("Selesai", ignoreCase = true) }
-                    val selesai = actionPlanList.count { it.statusProgres.contains("Selesai", ignoreCase = true) }
+                    val proses = actionPlanList.count { !it.statusProgres.contains("Selesai", ignoreCase = true) } +
+                            projectTaskList.count { !it.isCompleted }
+                    val selesai = actionPlanList.count { it.statusProgres.contains("Selesai", ignoreCase = true) } +
+                            projectTaskList.count { it.isCompleted }
 
-                    canvas.drawText("RINGKASAN METRIK PROYEK & ACTION PLAN:", 50f, currentY + 16f, textPaint)
+                    val avgProgress = if (total == 0) 0.0 else {
+                        val apSum = actionPlanList.sumOf {
+                            when {
+                                it.statusProgres.contains("Selesai", ignoreCase = true) -> 100.0
+                                it.statusProgres.contains("Proses", ignoreCase = true) -> 50.0
+                                else -> 0.0
+                            }
+                        }
+                        val ptSum = projectTaskList.sumOf {
+                            if (it.isCompleted) 100.0
+                            else if (it.bobotPersen > 0) (it.totalProgres / it.bobotPersen * 100.0).coerceIn(0.0, 100.0)
+                            else it.totalProgres.coerceIn(0.0, 100.0)
+                        }
+                        (apSum + ptSum) / total
+                    }
+
+                    canvas.drawText("RINGKASAN METRIK PROYEK & TO-DO / RENCANA:", 50f, currentY + 16f, textPaint)
                     textPaint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
-                    canvas.drawText("Total Proyek: $total agenda  |  Dalam Proses: $proses  |  Selesai: $selesai  |  Total Est. Anggaran: ${formatRupiah(totalEst)}", 50f, currentY + 32f, textPaint)
+                    canvas.drawText("Total Item: $total | Progres/Aktif: $proses | Selesai: $selesai | Rata-Rata Progres: ${String.format(Locale.US, "%.1f", avgProgress)}% | Est. Anggaran: ${formatRupiah(totalEst)}", 50f, currentY + 32f, textPaint)
                 }
                 ReportCategory.INVENTARIS_RUANG -> {
                     val totalRuang = ruangList.size
@@ -341,23 +363,51 @@ object ReportExporter {
                 ReportCategory.ACTION_PLAN -> {
                     val cols = listOf(
                         "No" to 25f,
-                        "Agenda Proyek" to 130f,
-                        "Lokasi" to 85f,
+                        "Agenda / Tugas Proyek" to 130f,
+                        "Sub-Kategori / Lokasi" to 85f,
                         "Status Progres" to 80f,
-                        "Target" to 65f,
-                        "Est. Anggaran" to 130f
+                        "Target Waktu" to 65f,
+                        "Est. Anggaran / Notes" to 130f
                     )
                     drawTableHeader(cols)
 
-                    actionPlanList.take(25).forEachIndexed { idx, item ->
+                    var rowIdx = 0
+
+                    projectTaskList.take(25).forEach { item ->
                         var currentX = 40f
-                        if (idx % 2 == 1) {
+                        if (rowIdx % 2 == 1) {
+                            canvas.drawRect(40f, currentY, 555f, currentY + 18f, Paint().apply { color = Color.rgb(248, 250, 252) })
+                        }
+                        canvas.drawRect(40f, currentY, 555f, currentY + 18f, borderPaint)
+
+                        val progressPct = if (item.isCompleted) 100.0 else if (item.bobotPersen > 0) (item.totalProgres / item.bobotPersen * 100.0).coerceIn(0.0, 100.0) else item.totalProgres
+                        val statusStr = if (item.isCompleted) "Selesai (100%)" else "${String.format(Locale.US, "%.1f", progressPct)}%"
+
+                        val data = listOf(
+                            "${rowIdx + 1}",
+                            "[${item.type}] ${item.title}".take(22),
+                            item.subKategori.ifBlank { "To-Do" }.take(14),
+                            statusStr.take(12),
+                            item.startDate.take(10),
+                            (if (item.notes.isNotBlank()) item.notes else "Bobot ${String.format(Locale.US, "%.1f", item.bobotPersen)}%").take(22)
+                        )
+                        cols.forEachIndexed { colIdx, (_, width) ->
+                            canvas.drawText(data[colIdx], currentX + 4f, currentY + 12f, cellTextPaint)
+                            currentX += width
+                        }
+                        currentY += 18f
+                        rowIdx++
+                    }
+
+                    actionPlanList.take((25 - rowIdx).coerceAtLeast(0)).forEach { item ->
+                        var currentX = 40f
+                        if (rowIdx % 2 == 1) {
                             canvas.drawRect(40f, currentY, 555f, currentY + 18f, Paint().apply { color = Color.rgb(248, 250, 252) })
                         }
                         canvas.drawRect(40f, currentY, 555f, currentY + 18f, borderPaint)
 
                         val data = listOf(
-                            "${idx + 1}",
+                            "${rowIdx + 1}",
                             item.agenda.take(22),
                             (item.lokasiRuang ?: "-").take(14),
                             item.statusProgres.take(12),
@@ -369,6 +419,7 @@ object ReportExporter {
                             currentX += width
                         }
                         currentY += 18f
+                        rowIdx++
                     }
                 }
 
@@ -487,7 +538,8 @@ object ReportExporter {
         actionPlanList: List<ActionPlan>,
         ruangList: List<Ruang>,
         peminjamanList: List<PeminjamanMakro>,
-        suratList: List<SuratArsip>
+        suratList: List<SuratArsip>,
+        projectTaskList: List<ProjectTask> = emptyList()
     ): ExportedFileResult? {
         val fileName = "Laporan_SarprasQ_${filter.category.name}_${getFileTimestamp()}.xlsx"
 
@@ -586,10 +638,26 @@ object ReportExporter {
                     }
                 }
                 ReportCategory.ACTION_PLAN -> {
-                    addRow(r++, listOf("No", "Agenda Proyek", "Kategori", "Lokasi Ruang", "Target Waktu", "Status Progres", "Estimasi Anggaran (Rp)", "Pelaksana / Tukang"))
-                    actionPlanList.forEachIndexed { idx, item ->
+                    addRow(r++, listOf("No", "Jenis / Agenda Proyek", "Sub-Kategori / Kategori", "Lokasi Ruang", "Target Waktu", "Status Progres", "Estimasi Anggaran / Notes", "Pelaksana / Detail"))
+                    var rowIdx = 1
+                    projectTaskList.forEach { item ->
+                        val progressPct = if (item.isCompleted) 100.0 else if (item.bobotPersen > 0) (item.totalProgres / item.bobotPersen * 100.0).coerceIn(0.0, 100.0) else item.totalProgres
+                        val statusStr = if (item.isCompleted) "Selesai (100%)" else "${String.format(Locale.US, "%.1f", progressPct)}%"
+
                         addRow(r++, listOf(
-                            "${idx + 1}",
+                            "${rowIdx++}",
+                            "[${item.type}] ${item.title}",
+                            item.subKategori.ifBlank { "To-Do" },
+                            "-",
+                            "${item.startDate} s/d ${item.endDate}",
+                            statusStr,
+                            if (item.notes.isNotBlank()) item.notes else "Bobot ${String.format(Locale.US, "%.1f", item.bobotPersen)}%",
+                            "Tim Internal Sarpras"
+                        ))
+                    }
+                    actionPlanList.forEach { item ->
+                        addRow(r++, listOf(
+                            "${rowIdx++}",
                             item.agenda,
                             item.kategori,
                             item.lokasiRuang ?: "-",
@@ -665,7 +733,8 @@ object ReportExporter {
         actionPlanList: List<ActionPlan>,
         ruangList: List<Ruang>,
         peminjamanList: List<PeminjamanMakro>,
-        suratList: List<SuratArsip>
+        suratList: List<SuratArsip>,
+        projectTaskList: List<ProjectTask> = emptyList()
     ): ExportedFileResult? {
         val fileName = "Laporan_SarprasQ_${filter.category.name}_${getFileTimestamp()}.docx"
 
@@ -808,10 +877,35 @@ object ReportExporter {
                     addTable(headers, rows)
                 }
                 ReportCategory.ACTION_PLAN -> {
-                    val headers = listOf("No", "Agenda Proyek", "Lokasi", "Target Waktu", "Status", "Est. Anggaran (Rp)")
-                    val rows = actionPlanList.mapIndexed { idx, item ->
-                        listOf("${idx + 1}", item.agenda, item.lokasiRuang ?: "-", item.targetWaktu, item.statusProgres, formatRupiah(item.estimasiAnggaran))
+                    val headers = listOf("No", "Agenda Proyek / To-Do", "Lokasi / Sub-Kat", "Target Waktu", "Status", "Est. Anggaran / Notes")
+                    var rowIdx = 1
+                    val rows = mutableListOf<List<String>>()
+
+                    projectTaskList.forEach { item ->
+                        val progressPct = if (item.isCompleted) 100.0 else if (item.bobotPersen > 0) (item.totalProgres / item.bobotPersen * 100.0).coerceIn(0.0, 100.0) else item.totalProgres
+                        val statusStr = if (item.isCompleted) "Selesai (100%)" else "${String.format(Locale.US, "%.1f", progressPct)}%"
+
+                        rows.add(listOf(
+                            "${rowIdx++}",
+                            "[${item.type}] ${item.title}",
+                            item.subKategori.ifBlank { "-" },
+                            "${item.startDate} - ${item.endDate}",
+                            statusStr,
+                            if (item.notes.isNotBlank()) item.notes else "Bobot ${String.format(Locale.US, "%.1f", item.bobotPersen)}%"
+                        ))
                     }
+
+                    actionPlanList.forEach { item ->
+                        rows.add(listOf(
+                            "${rowIdx++}",
+                            item.agenda,
+                            item.lokasiRuang ?: "-",
+                            item.targetWaktu,
+                            item.statusProgres,
+                            formatRupiah(item.estimasiAnggaran)
+                        ))
+                    }
+
                     addTable(headers, rows)
                 }
                 ReportCategory.INVENTARIS_RUANG -> {

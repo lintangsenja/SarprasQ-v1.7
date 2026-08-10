@@ -162,6 +162,7 @@ fun TodoProjectScreen(
 
     // --- State Dialog ---
     var showAddTaskDialog by remember { mutableStateOf(false) }
+    var taskToEdit by remember { mutableStateOf<ProjectTask?>(null) }
     var taskToRecordProgress by remember { mutableStateOf<ProjectTask?>(null) }
     var taskToViewHistory by remember { mutableStateOf<ProjectTask?>(null) }
 
@@ -496,6 +497,7 @@ fun TodoProjectScreen(
                         onToggleComplete = { viewModel.toggleTaskCompletion(task) },
                         onRecordProgress = { taskToRecordProgress = task },
                         onViewHistory = { taskToViewHistory = task },
+                        onEdit = { taskToEdit = task },
                         onDelete = { viewModel.deleteProjectTask(task) }
                     )
                 }
@@ -597,6 +599,21 @@ fun TodoProjectScreen(
             },
             onDeleteEntry = { index ->
                 viewModel.deleteProgressLogEntry(currentTask, index)
+            }
+        )
+    }
+
+    // --- DIALOG EDIT PROJECT TASK ---
+    taskToEdit?.let { editTask ->
+        val currentTask = tasks.find { it.id == editTask.id } ?: editTask
+        EditProjectTaskDialog(
+            task = currentTask,
+            subKategoriMasterList = subKategoriList,
+            onAddSubKategori = { name, kat -> viewModel.addSubKategori(name, kat) },
+            onDismiss = { taskToEdit = null },
+            onSubmit = { updatedTask ->
+                viewModel.updateProjectTask(updatedTask)
+                taskToEdit = null
             }
         )
     }
@@ -1138,6 +1155,7 @@ fun ProjectTaskItemCard(
     onToggleComplete: () -> Unit,
     onRecordProgress: () -> Unit,
     onViewHistory: () -> Unit,
+    onEdit: () -> Unit,
     onDelete: () -> Unit
 ) {
     val isProyek = task.type.equals("Proyek Revitalisasi", ignoreCase = true)
@@ -1208,16 +1226,33 @@ fun ProjectTaskItemCard(
                     }
                 }
 
-                IconButton(
-                    onClick = onDelete,
-                    modifier = Modifier.size(28.dp)
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(2.dp)
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.Delete,
-                        contentDescription = "Hapus Task",
-                        tint = TextSecondary.copy(alpha = 0.6f),
-                        modifier = Modifier.size(18.dp)
-                    )
+                    IconButton(
+                        onClick = onEdit,
+                        modifier = Modifier.size(28.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Edit,
+                            contentDescription = "Edit Task",
+                            tint = PastelSkyBlueDark,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+
+                    IconButton(
+                        onClick = onDelete,
+                        modifier = Modifier.size(28.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Delete,
+                            contentDescription = "Hapus Task",
+                            tint = TextSecondary.copy(alpha = 0.6f),
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
                 }
             }
 
@@ -2245,6 +2280,386 @@ fun AddEditProjectTaskDialog(
                     Icon(Icons.Default.Save, contentDescription = null, modifier = Modifier.size(18.dp))
                     Spacer(modifier = Modifier.width(6.dp))
                     Text("Simpan Semua", fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+    }
+}
+
+// --- DIALOG EDIT INDIVIDUAL PROJECT TASK / PROYEK / HARIAN ---
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun EditProjectTaskDialog(
+    task: ProjectTask,
+    subKategoriMasterList: List<SubKategoriMaster>,
+    onAddSubKategori: ((String, String) -> Unit)? = null,
+    onDismiss: () -> Unit,
+    onSubmit: (updatedTask: ProjectTask) -> Unit
+) {
+    var title by remember { mutableStateOf(task.title) }
+    var type by remember { mutableStateOf(task.type) }
+    var selectedSubKat by remember { mutableStateOf(task.subKategori) }
+    var notes by remember { mutableStateOf(task.notes) }
+    var startDate by remember { mutableStateOf(task.startDate.ifBlank { SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()).format(Date()) }) }
+    var endDate by remember { mutableStateOf(if (task.endDate.isNotBlank()) task.endDate else startDate) }
+    var bobotInput by remember { mutableStateOf(if (task.bobotPersen > 0) formatProgressPercent(task.bobotPersen) else "10.0") }
+    var totalProgresInput by remember { mutableStateOf(formatProgressPercent(task.totalProgres)) }
+    var isCompleted by remember { mutableStateOf(task.isCompleted) }
+
+    var dropdownExpanded by remember { mutableStateOf(false) }
+
+    val durasiHari = remember(startDate, endDate) {
+        calculateDaysBetween(startDate, endDate)
+    }
+
+    Dialog(onDismissRequest = onDismiss) {
+        Card(
+            shape = RoundedCornerShape(20.dp),
+            colors = CardDefaults.cardColors(containerColor = Color.White),
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(18.dp)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                // Title Header
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            modifier = Modifier
+                                .size(32.dp)
+                                .clip(CircleShape)
+                                .background(PastelSkyBlue.copy(alpha = 0.4f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Edit,
+                                contentDescription = null,
+                                tint = PastelSkyBlueDark,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Column {
+                            Text(
+                                text = "Edit Tugas / Proyek",
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = TextPrimary
+                            )
+                            Text(
+                                text = "Ubah detail, adendum waktu, & bobot progres",
+                                fontSize = 11.sp,
+                                color = TextSecondary
+                            )
+                        }
+                    }
+
+                    IconButton(onClick = onDismiss, modifier = Modifier.size(24.dp)) {
+                        Icon(Icons.Default.Close, contentDescription = "Tutup", tint = TextSecondary)
+                    }
+                }
+
+                // Mode Selector Chips
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    val typeOptions = listOf(
+                        Pair("Harian", "Harian"),
+                        Pair("Proyek Revitalisasi", "Proyek Revitalisasi"),
+                        Pair("Rehab Intern", "Rehab Intern")
+                    )
+                    typeOptions.forEach { (key, label) ->
+                        val selected = type == key
+                        FilterChip(
+                            selected = selected,
+                            onClick = { type = key },
+                            label = { Text(label, fontSize = 11.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal) },
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = when (key) {
+                                    "Rehab Intern" -> PastelButterYellow
+                                    "Proyek Revitalisasi" -> PastelLavender
+                                    else -> PastelMint
+                                },
+                                selectedLabelColor = when (key) {
+                                    "Rehab Intern" -> PastelButterYellowDark
+                                    "Proyek Revitalisasi" -> PastelLavenderDark
+                                    else -> PastelMintDark
+                                },
+                                containerColor = Color.White
+                            )
+                        )
+                    }
+                }
+
+                // Title Input
+                OutlinedTextField(
+                    value = title,
+                    onValueChange = { title = it },
+                    label = { Text("Nama / Judul Tugas *") },
+                    placeholder = { Text("Misal: Pengecatan ulang dinding laboratorium") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                // Sub-Kategori Dropdown (for Proyek & Rehab)
+                if (type == "Proyek Revitalisasi" || type == "Rehab Intern") {
+                    ExposedDropdownMenuBox(
+                        expanded = dropdownExpanded,
+                        onExpandedChange = { dropdownExpanded = !dropdownExpanded }
+                    ) {
+                        val options = subKategoriMasterList.map { it.namaSubKategori }.distinct()
+                        val isCustom = selectedSubKat.isNotBlank() && !options.any { it.equals(selectedSubKat.trim(), ignoreCase = true) }
+                        val context = androidx.compose.ui.platform.LocalContext.current
+
+                        OutlinedTextField(
+                            value = selectedSubKat,
+                            onValueChange = {
+                                selectedSubKat = it
+                                dropdownExpanded = true
+                            },
+                            readOnly = false,
+                            label = { Text(if (type == "Rehab Intern") "Sub-Pekerjaan Rehab Intern" else "Sub-Kategori Pekerjaan") },
+                            placeholder = { Text("Ketik nama sub-pekerjaan...", fontSize = 12.sp, color = TextSecondary.copy(alpha = 0.6f)) },
+                            trailingIcon = {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    if (isCustom && onAddSubKategori != null) {
+                                        IconButton(
+                                            onClick = {
+                                                onAddSubKategori(selectedSubKat.trim(), "Sub-Pekerjaan $type")
+                                                android.widget.Toast.makeText(context, "Sub-Kategori '${selectedSubKat.trim()}' disimpan ke Master", android.widget.Toast.LENGTH_SHORT).show()
+                                            },
+                                            modifier = Modifier.size(24.dp)
+                                        ) {
+                                            Icon(Icons.Default.AddCircle, contentDescription = "Simpan ke Master", tint = PastelMintDark, modifier = Modifier.size(18.dp))
+                                        }
+                                    }
+                                    ExposedDropdownMenuDefaults.TrailingIcon(expanded = dropdownExpanded)
+                                }
+                            },
+                            modifier = Modifier
+                                .menuAnchor()
+                                .fillMaxWidth()
+                        )
+
+                        ExposedDropdownMenu(
+                            expanded = dropdownExpanded,
+                            onDismissRequest = { dropdownExpanded = false }
+                        ) {
+                            if (isCustom && onAddSubKategori != null) {
+                                DropdownMenuItem(
+                                    text = {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Icon(Icons.Default.AddCircle, contentDescription = null, tint = PastelMintDark, modifier = Modifier.size(16.dp))
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Text("Tambah \"${selectedSubKat.trim()}\" ke Master", color = PastelMintDark, fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                                        }
+                                    },
+                                    onClick = {
+                                        onAddSubKategori(selectedSubKat.trim(), "Sub-Pekerjaan $type")
+                                        dropdownExpanded = false
+                                        android.widget.Toast.makeText(context, "Sub-Kategori '${selectedSubKat.trim()}' disimpan ke Master", android.widget.Toast.LENGTH_SHORT).show()
+                                    }
+                                )
+                                HorizontalDivider()
+                            }
+                            options.filter { it.contains(selectedSubKat, ignoreCase = true) }.forEach { option ->
+                                DropdownMenuItem(
+                                    text = { Text(option) },
+                                    onClick = {
+                                        selectedSubKat = option
+                                        dropdownExpanded = false
+                                    }
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // Date Range Section (Mulai & Selesai - Adendum Waktu)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    DatePickerField(
+                        value = startDate,
+                        onDateSelected = { startDate = it },
+                        label = "Tgl Mulai",
+                        modifier = Modifier.weight(1f)
+                    )
+
+                    DatePickerField(
+                        value = endDate,
+                        onDateSelected = { endDate = it },
+                        label = "Tgl Selesai (Adendum)",
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+
+                // Duration Info Badge
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(PastelSkyBlue.copy(alpha = 0.2f))
+                        .padding(horizontal = 10.dp, vertical = 6.dp)
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.CalendarMonth, contentDescription = null, tint = PastelSkyBlueDark, modifier = Modifier.size(14.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "Durasi Pekerjaan: $durasiHari Hari (Adendum Terakomodasi)",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = PastelSkyBlueDark
+                        )
+                    }
+                }
+
+                // If Proyek or Rehab: Bobot & Total Progres Fields
+                if (type == "Proyek Revitalisasi" || type == "Rehab Intern") {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        OutlinedTextField(
+                            value = bobotInput,
+                            onValueChange = { bobotInput = it },
+                            label = { Text("Target Bobot (%)") },
+                            leadingIcon = { Icon(Icons.Default.Percent, contentDescription = null, tint = TextSecondary, modifier = Modifier.size(16.dp)) },
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                            modifier = Modifier.weight(1f)
+                        )
+
+                        OutlinedTextField(
+                            value = totalProgresInput,
+                            onValueChange = { totalProgresInput = it },
+                            label = { Text("Capaian Progres (%)") },
+                            leadingIcon = { Icon(Icons.Default.TrendingUp, contentDescription = null, tint = TextSecondary, modifier = Modifier.size(16.dp)) },
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+
+                    // Calculation Preview
+                    val parsedBobot = bobotInput.replace(",", ".").toDoubleOrNull() ?: task.bobotPersen
+                    val parsedTotal = totalProgresInput.replace(",", ".").toDoubleOrNull() ?: task.totalProgres
+                    val diff = (parsedBobot - parsedTotal).coerceAtLeast(0.0)
+
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = PastelBackground,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(10.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("Sisa Kekurangan Progres:", fontSize = 11.sp, color = TextSecondary)
+                            Text(
+                                text = if (diff <= 0.0001 || isCompleted) "0% (LUNAS)" else "${formatProgressPercent(diff)}%",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (diff <= 0.0001 || isCompleted) PastelMintDark else PastelPeachDark
+                            )
+                        }
+                    }
+                }
+
+                // Notes Input
+                OutlinedTextField(
+                    value = notes,
+                    onValueChange = { notes = it },
+                    label = { Text("Catatan / Deskripsi Tambahan") },
+                    placeholder = { Text("Keterangan opsional...") },
+                    modifier = Modifier.fillMaxWidth(),
+                    maxLines = 3
+                )
+
+                // Status Checkbox
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(8.dp))
+                        .clickable { isCompleted = !isCompleted }
+                        .padding(vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Checkbox(
+                        checked = isCompleted,
+                        onCheckedChange = { isCompleted = it },
+                        colors = CheckboxDefaults.colors(
+                            checkedColor = PastelMintDark,
+                            uncheckedColor = TextSecondary
+                        )
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        text = "Tandai Tugas / Pekerjaan Selesai (100% Lunas)",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = TextPrimary
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(4.dp))
+
+                // Submit Button
+                val contextDialog = androidx.compose.ui.platform.LocalContext.current
+                Button(
+                    onClick = {
+                        if (title.isBlank()) {
+                            android.widget.Toast.makeText(contextDialog, "Harap isi Nama / Judul Tugas!", android.widget.Toast.LENGTH_SHORT).show()
+                            return@Button
+                        }
+
+                        val finalBobot = if (type == "Harian") 0.0 else (bobotInput.replace(",", ".").toDoubleOrNull() ?: task.bobotPersen)
+                        val finalTotal = if (type == "Harian") (if (isCompleted) finalBobot else 0.0) else (totalProgresInput.replace(",", ".").toDoubleOrNull() ?: task.totalProgres)
+                        val finalSubKat = if (type == "Harian") "Harian" else selectedSubKat
+
+                        val isCompleteNow = isCompleted || (finalBobot > 0 && finalTotal >= finalBobot) || finalTotal >= 100.0
+
+                        val updatedTask = task.copy(
+                            title = title.trim(),
+                            type = type,
+                            subKategori = finalSubKat.trim(),
+                            notes = notes.trim(),
+                            startDate = startDate,
+                            endDate = if (type == "Harian") startDate else endDate,
+                            durasiHari = if (durasiHari <= 0) 1 else durasiHari,
+                            bobotPersen = finalBobot,
+                            totalProgres = finalTotal,
+                            isCompleted = isCompleteNow
+                        )
+
+                        onSubmit(updatedTask)
+                    },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = when (type) {
+                            "Rehab Intern" -> PastelButterYellowDark
+                            "Proyek Revitalisasi" -> PastelLavenderDark
+                            else -> PastelSkyBlueDark
+                        }
+                    ),
+                    shape = RoundedCornerShape(10.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(46.dp)
+                ) {
+                    Icon(Icons.Default.Save, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("Simpan Perubahan", fontSize = 14.sp, fontWeight = FontWeight.Bold)
                 }
             }
         }

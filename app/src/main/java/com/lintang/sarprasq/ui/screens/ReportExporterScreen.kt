@@ -69,6 +69,7 @@ import androidx.compose.ui.unit.sp
 import com.lintang.sarprasq.data.model.ActionPlan
 import com.lintang.sarprasq.data.model.HelpdeskReport
 import com.lintang.sarprasq.data.model.PeminjamanMakro
+import com.lintang.sarprasq.data.model.ProjectTask
 import com.lintang.sarprasq.data.model.Ruang
 import com.lintang.sarprasq.data.model.SuratArsip
 import com.lintang.sarprasq.ui.components.DatePickerField
@@ -79,6 +80,8 @@ import com.lintang.sarprasq.ui.theme.PastelBackground
 import com.lintang.sarprasq.ui.theme.PastelButterYellow
 import com.lintang.sarprasq.ui.theme.PastelButterYellowDark
 import com.lintang.sarprasq.ui.theme.PastelCardBorder
+import com.lintang.sarprasq.ui.theme.PastelLavender
+import com.lintang.sarprasq.ui.theme.PastelLavenderDark
 import com.lintang.sarprasq.ui.theme.PastelMint
 import com.lintang.sarprasq.ui.theme.PastelMintDark
 import com.lintang.sarprasq.ui.theme.PastelMintLight
@@ -111,6 +114,7 @@ fun ReportExporterScreen(viewModel: SarprasViewModel) {
 
     val allHelpdesk by viewModel.allReports.collectAsState()
     val allActionPlans by viewModel.actionPlans.collectAsState()
+    val allProjectTasks by viewModel.allProjectTasks.collectAsState()
     val allRuang by viewModel.allRuang.collectAsState()
     val allPeminjaman by viewModel.peminjamanList.collectAsState()
     val allSurat by viewModel.suratArsipList.collectAsState()
@@ -161,6 +165,16 @@ fun ReportExporterScreen(viewModel: SarprasViewModel) {
         }
     }
 
+    val filteredProjectTasks = remember(allProjectTasks, selectedRuang, selectedDateRange, startDate, endDate) {
+        allProjectTasks.filter { task ->
+            val matchRuang = if (selectedRuang == "Semua Ruang") true
+            else task.subKategori.contains(selectedRuang, ignoreCase = true) || task.notes.contains(selectedRuang, ignoreCase = true) || task.title.contains(selectedRuang, ignoreCase = true)
+            val dateStr = task.startDate.ifBlank { task.endDate }
+            val matchDate = isDateInRange(dateStr, startDate, endDate, selectedDateRange)
+            matchRuang && matchDate
+        }
+    }
+
     val filteredRuang = remember(allRuang, selectedRuang) {
         if (selectedRuang == "Semua Ruang") allRuang
         else allRuang.filter { it.namaRuang.contains(selectedRuang, ignoreCase = true) }
@@ -195,7 +209,8 @@ fun ReportExporterScreen(viewModel: SarprasViewModel) {
             actionPlanList = filteredActionPlans,
             ruangList = filteredRuang,
             peminjamanList = allPeminjaman,
-            suratList = filteredSurat
+            suratList = filteredSurat,
+            projectTaskList = filteredProjectTasks
         )
         if (result != null) {
             exportedFileResult = result
@@ -215,7 +230,8 @@ fun ReportExporterScreen(viewModel: SarprasViewModel) {
             actionPlanList = filteredActionPlans,
             ruangList = filteredRuang,
             peminjamanList = allPeminjaman,
-            suratList = filteredSurat
+            suratList = filteredSurat,
+            projectTaskList = filteredProjectTasks
         )
         if (result != null) {
             exportedFileResult = result
@@ -235,7 +251,8 @@ fun ReportExporterScreen(viewModel: SarprasViewModel) {
             actionPlanList = filteredActionPlans,
             ruangList = filteredRuang,
             peminjamanList = allPeminjaman,
-            suratList = filteredSurat
+            suratList = filteredSurat,
+            projectTaskList = filteredProjectTasks
         )
         if (result != null) {
             exportedFileResult = result
@@ -609,7 +626,7 @@ fun ReportExporterScreen(viewModel: SarprasViewModel) {
 
                 when (currentCategory) {
                     ReportCategory.HELPDESK -> HelpdeskSummaryMetrics(filteredHelpdesk)
-                    ReportCategory.ACTION_PLAN -> ActionPlanSummaryMetrics(filteredActionPlans)
+                    ReportCategory.ACTION_PLAN -> ActionPlanSummaryMetrics(filteredActionPlans, filteredProjectTasks)
                     ReportCategory.INVENTARIS_RUANG -> InventarisSummaryMetrics(filteredRuang, allPeminjaman)
                     ReportCategory.ADMINISTRASI -> AdministrasiSummaryMetrics(filteredSurat)
                 }
@@ -620,7 +637,7 @@ fun ReportExporterScreen(viewModel: SarprasViewModel) {
                     text = "PRATINJAU DATA SIAP CETAK (${
                         when(currentCategory) {
                             ReportCategory.HELPDESK -> "${filteredHelpdesk.size} Item"
-                            ReportCategory.ACTION_PLAN -> "${filteredActionPlans.size} Item"
+                            ReportCategory.ACTION_PLAN -> "${filteredActionPlans.size + filteredProjectTasks.size} Item"
                             ReportCategory.INVENTARIS_RUANG -> "${filteredRuang.size} Ruang"
                             ReportCategory.ADMINISTRASI -> "${filteredSurat.size} Dokumen"
                         }
@@ -640,6 +657,9 @@ fun ReportExporterScreen(viewModel: SarprasViewModel) {
                     }
                 }
                 ReportCategory.ACTION_PLAN -> {
+                    items(filteredProjectTasks) { task ->
+                        ProjectTaskPreviewCard(task)
+                    }
                     items(filteredActionPlans) { item ->
                         ActionPlanPreviewCard(item)
                     }
@@ -735,23 +755,51 @@ private fun HelpdeskSummaryMetrics(list: List<HelpdeskReport>) {
 }
 
 @Composable
-private fun ActionPlanSummaryMetrics(list: List<ActionPlan>) {
-    val total = list.size
-    val totalEst = list.sumOf {
+private fun ActionPlanSummaryMetrics(actionPlanList: List<ActionPlan>, projectTaskList: List<ProjectTask>) {
+    val totalActionPlans = actionPlanList.size
+    val totalProjectTasks = projectTaskList.size
+    val totalItems = totalActionPlans + totalProjectTasks
+
+    val activeActionPlans = actionPlanList.count { !it.statusProgres.contains("Selesai", ignoreCase = true) }
+    val activeProjectTasks = projectTaskList.count { !it.isCompleted }
+    val totalActive = activeActionPlans + activeProjectTasks
+
+    val finishedActionPlans = actionPlanList.count { it.statusProgres.contains("Selesai", ignoreCase = true) }
+    val finishedProjectTasks = projectTaskList.count { it.isCompleted }
+    val totalFinished = finishedActionPlans + finishedProjectTasks
+
+    val totalEstBudget = actionPlanList.sumOf {
         it.estimasiAnggaran?.replace(Regex("[^0-9]"), "")?.toDoubleOrNull() ?: 0.0
     }
-    val proses = list.count { !it.statusProgres.contains("Selesai", ignoreCase = true) }
-    val selesai = list.count { it.statusProgres.contains("Selesai", ignoreCase = true) }
 
-    val formatRupiah = NumberFormat.getCurrencyInstance(Locale("id", "ID")).format(totalEst).replace(",00", "")
+    val avgProgressPercent = if (totalItems == 0) 0.0 else {
+        val actionPlanProgressSum = actionPlanList.sumOf {
+            when {
+                it.statusProgres.contains("Selesai", ignoreCase = true) -> 100.0
+                it.statusProgres.contains("Proses", ignoreCase = true) -> 50.0
+                else -> 0.0
+            }
+        }
+        val projectTaskProgressSum = projectTaskList.sumOf { task ->
+            if (task.isCompleted) 100.0
+            else if (task.bobotPersen > 0) (task.totalProgres / task.bobotPersen * 100.0).coerceIn(0.0, 100.0)
+            else task.totalProgres.coerceIn(0.0, 100.0)
+        }
+        (actionPlanProgressSum + projectTaskProgressSum) / totalItems
+    }
+
+    val formatRupiah = NumberFormat.getCurrencyInstance(Locale("id", "ID")).format(totalEstBudget).replace(",00", "")
 
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            MetricBox("Total Action Plan", "$total Proyek", PastelSkyBlueContainer, PastelSkyBlueDark, Modifier.weight(1f))
-            MetricBox("Progres / Berjalan", "$proses Proyek", PastelButterYellow, PastelButterYellowDark, Modifier.weight(1f))
-            MetricBox("Proyek Selesai", "$selesai Proyek", PastelMint, PastelMintDark, Modifier.weight(1f))
+            MetricBox("Total Proyek & To-Do", "$totalItems Item", PastelSkyBlueContainer, PastelSkyBlueDark, Modifier.weight(1f))
+            MetricBox("Progres / Berjalan", "$totalActive Aktif", PastelButterYellow, PastelButterYellowDark, Modifier.weight(1f))
+            MetricBox("Rampung / Selesai", "$totalFinished Selesai", PastelMint, PastelMintDark, Modifier.weight(1f))
         }
-        MetricBox("Total Estimasi Anggaran Revitalisasi", formatRupiah, PastelSkyBlueContainer, PastelSkyBlueDark, Modifier.fillMaxWidth())
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            MetricBox("Rata-rata Capaian Fisik", String.format(Locale.US, "%.1f%%", avgProgressPercent), PastelLavender, PastelLavenderDark, Modifier.weight(1f))
+            MetricBox("Total Est. Anggaran Proyek", formatRupiah, PastelSkyBlueContainer, PastelSkyBlueDark, Modifier.weight(1.2f))
+        }
     }
 }
 
@@ -818,6 +866,35 @@ private fun HelpdeskPreviewCard(item: HelpdeskReport) {
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 StatusTag(item.urgensi, PastelPeach, PastelPeachDark)
                 StatusTag(item.status, PastelSkyBlueContainer, PastelSkyBlueDark)
+            }
+        }
+    }
+}
+
+@Composable
+private fun ProjectTaskPreviewCard(item: ProjectTask) {
+    val progressPct = if (item.isCompleted) 100.0 else if (item.bobotPersen > 0) (item.totalProgres / item.bobotPersen * 100.0).coerceIn(0.0, 100.0) else item.totalProgres
+    val formatPct = String.format(Locale.US, "%.1f%%", progressPct)
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp),
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(containerColor = PastelSurface),
+        border = BorderStroke(1.dp, PastelCardBorder)
+    ) {
+        Column(modifier = Modifier.padding(12.dp)) {
+            Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
+                Text("[${item.type}] ${item.title}", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = TextPrimary, modifier = Modifier.weight(1f))
+                Spacer(modifier = Modifier.width(6.dp))
+                StatusTag(if (item.isCompleted) "Selesai (100%)" else "$formatPct Progres", if (item.isCompleted) PastelMint else PastelButterYellow, if (item.isCompleted) PastelMintDark else PastelButterYellowDark)
+            }
+            Spacer(modifier = Modifier.height(4.dp))
+            Text("Sub-Kategori: ${item.subKategori.ifBlank { "-" }} | Target: ${item.startDate} s/d ${item.endDate} (${item.durasiHari} Hari)", fontSize = 11.sp, color = TextSecondary)
+            if (item.notes.isNotBlank()) {
+                Spacer(modifier = Modifier.height(2.dp))
+                Text("Catatan: ${item.notes}", fontSize = 11.sp, color = TextSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
     }

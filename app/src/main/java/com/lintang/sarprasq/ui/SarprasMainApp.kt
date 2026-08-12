@@ -687,13 +687,14 @@ fun SarprasMainApp(viewModel: SarprasViewModel) {
     if (showAddPeminjamanDialog) {
         AddPeminjamanDialog(
             onDismiss = { showAddPeminjamanDialog = false },
-            onSubmit = { bulanTahun, namaBarang, jumlahPeminjaman, kondisi ->
-                viewModel.addPeminjamanMakro(
-                    bulanTahun = bulanTahun,
-                    namaBarang = namaBarang,
-                    jumlahPeminjaman = jumlahPeminjaman,
-                    kondisi = kondisi
-                )
+            onSubmitBatch = { peminjamanList ->
+                viewModel.insertPeminjamanMakroList(peminjamanList) {
+                    Toast.makeText(
+                        context,
+                        "✓ Berhasil menyimpan ${peminjamanList.size} transaksi peminjaman barang!",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
                 showAddPeminjamanDialog = false
             }
         )

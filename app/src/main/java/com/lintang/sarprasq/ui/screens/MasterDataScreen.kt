@@ -23,6 +23,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.Category
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Class
@@ -81,6 +82,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.lintang.sarprasq.data.model.KategoriMaster
+import com.lintang.sarprasq.data.model.KondisiMaster
 import com.lintang.sarprasq.data.model.SubKategoriMaster
 import com.lintang.sarprasq.data.model.Ruang
 import com.lintang.sarprasq.data.model.SatuanMaster
@@ -118,7 +120,7 @@ fun MasterDataScreen(
     viewModel: SarprasViewModel,
     initialTab: Int = 0
 ) {
-    var selectedTab by remember { mutableIntStateOf(initialTab.coerceIn(0, 5)) }
+    var selectedTab by remember { mutableIntStateOf(initialTab.coerceIn(0, 6)) }
 
     val kategoriList by viewModel.allKategori.collectAsState()
     val subKategoriList by viewModel.allSubKategori.collectAsState()
@@ -126,6 +128,7 @@ fun MasterDataScreen(
     val satuanList by viewModel.allSatuan.collectAsState()
     val statusList by viewModel.allStatusPenanganan.collectAsState()
     val urgensiList by viewModel.allUrgensi.collectAsState()
+    val kondisiList by viewModel.allKondisi.collectAsState()
 
     Column(
         modifier = Modifier
@@ -241,6 +244,22 @@ fun MasterDataScreen(
                     }
                 }
             )
+
+            Tab(
+                selected = selectedTab == 6,
+                onClick = { selectedTab = 6 },
+                text = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Default.Build,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Kondisi (${kondisiList.size})", fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                    }
+                }
+            )
         }
 
         when (selectedTab) {
@@ -250,6 +269,7 @@ fun MasterDataScreen(
             3 -> SatuanTabContent(satuanList = satuanList, viewModel = viewModel)
             4 -> StatusPenangananTabContent(statusList = statusList, viewModel = viewModel)
             5 -> UrgensiTabContent(urgensiList = urgensiList, viewModel = viewModel)
+            6 -> KondisiTabContent(kondisiList = kondisiList, viewModel = viewModel)
         }
     }
 }
@@ -2818,6 +2838,342 @@ fun UrgensiFormDialog(
                 },
                 colors = ButtonDefaults.buttonColors(containerColor = PastelPeachDark),
                 enabled = namaUrgensi.isNotBlank()
+            ) {
+                Text("Simpan", fontWeight = FontWeight.Bold)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Batal")
+            }
+        }
+    )
+}
+
+// ==========================================
+// 7. TAB KONDISI
+// ==========================================
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun KondisiTabContent(
+    kondisiList: List<KondisiMaster>,
+    viewModel: SarprasViewModel
+) {
+    var searchQuery by remember { mutableStateOf("") }
+    var showAddDialog by remember { mutableStateOf(false) }
+    var editingKondisi by remember { mutableStateOf<KondisiMaster?>(null) }
+    var deletingKondisi by remember { mutableStateOf<KondisiMaster?>(null) }
+    var showResetDialog by remember { mutableStateOf(false) }
+
+    val filteredList = remember(searchQuery, kondisiList) {
+        if (searchQuery.isBlank()) {
+            kondisiList
+        } else {
+            kondisiList.filter {
+                it.namaKondisi.contains(searchQuery, ignoreCase = true) ||
+                it.deskripsi.contains(searchQuery, ignoreCase = true)
+            }
+        }
+    }
+
+    Box(modifier = Modifier.fillMaxSize()) {
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+            contentPadding = PaddingValues(top = 16.dp, bottom = 88.dp)
+        ) {
+            item {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    OutlinedTextField(
+                        value = searchQuery,
+                        onValueChange = { searchQuery = it },
+                        placeholder = { Text("Cari status kondisi...", fontSize = 13.sp) },
+                        leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.size(18.dp)) },
+                        trailingIcon = {
+                            if (searchQuery.isNotEmpty()) {
+                                IconButton(onClick = { searchQuery = "" }) {
+                                    Icon(Icons.Default.Delete, contentDescription = "Clear", modifier = Modifier.size(16.dp))
+                                }
+                            }
+                        },
+                        singleLine = true,
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(50.dp),
+                        shape = RoundedCornerShape(12.dp)
+                    )
+
+                    Button(
+                        onClick = { showResetDialog = true },
+                        colors = ButtonDefaults.buttonColors(containerColor = PastelSkyBlueContainer, contentColor = PastelSkyBlueDark),
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier.height(34.dp)
+                    ) {
+                        Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(14.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Reset 4 Option Default", fontSize = 11.sp)
+                    }
+                }
+            }
+
+            if (filteredList.isEmpty()) {
+                item {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(32.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = if (searchQuery.isBlank()) "Belum ada data Kondisi" else "Kondisi tidak ditemukan",
+                            color = TextSecondary,
+                            fontSize = 13.sp
+                        )
+                    }
+                }
+            } else {
+                items(filteredList, key = { it.id }) { item ->
+                    KondisiCardItem(
+                        kondisi = item,
+                        onEdit = { editingKondisi = item },
+                        onDelete = { deletingKondisi = item }
+                    )
+                }
+            }
+        }
+
+        // Floating Action Button
+        FloatingActionButton(
+            onClick = { showAddDialog = true },
+            containerColor = PastelSkyBlueDark,
+            contentColor = Color.White,
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(20.dp),
+            shape = CircleShape,
+            elevation = FloatingActionButtonDefaults.elevation(defaultElevation = 6.dp, pressedElevation = 10.dp)
+        ) {
+            Icon(Icons.Default.Add, contentDescription = "Tambah Kondisi", modifier = Modifier.size(24.dp))
+        }
+    }
+
+    // Form Dialog Kondisi
+    if (showAddDialog || editingKondisi != null) {
+        KondisiFormDialog(
+            kondisi = editingKondisi,
+            onDismiss = {
+                showAddDialog = false
+                editingKondisi = null
+            },
+            onSave = { nama, desk ->
+                if (editingKondisi != null) {
+                    viewModel.updateKondisi(
+                        editingKondisi!!.copy(
+                            namaKondisi = nama,
+                            deskripsi = desk
+                        )
+                    )
+                } else {
+                    viewModel.addKondisi(
+                        namaKondisi = nama,
+                        deskripsi = desk
+                    )
+                }
+                showAddDialog = false
+                editingKondisi = null
+            }
+        )
+    }
+
+    // Delete Confirmation
+    if (deletingKondisi != null) {
+        AlertDialog(
+            onDismissRequest = { deletingKondisi = null },
+            title = { Text("Hapus Opsi Kondisi?", fontWeight = FontWeight.Bold) },
+            text = { Text("Apakah Anda yakin ingin menghapus opsi kondisi '${deletingKondisi?.namaKondisi}'?") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        deletingKondisi?.let { viewModel.deleteKondisi(it) }
+                        deletingKondisi = null
+                    },
+                    colors = ButtonDefaults.textButtonColors(contentColor = PastelPeachDark)
+                ) {
+                    Text("Hapus", fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { deletingKondisi = null }) {
+                    Text("Batal")
+                }
+            }
+        )
+    }
+
+    // Reset Confirmation
+    if (showResetDialog) {
+        AlertDialog(
+            onDismissRequest = { showResetDialog = false },
+            title = { Text("Reset Ke Opsi Default?", fontWeight = FontWeight.Bold) },
+            text = {
+                Text("Fitur ini akan mengembalikan 4 pilihan default kondisi:\n1. Baik\n2. Rusak Sedang\n3. Rusak\n4. Perawatan")
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        viewModel.resetDefaultKondisi()
+                        showResetDialog = false
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = PastelSkyBlueDark)
+                ) {
+                    Text("Reset Default", fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showResetDialog = false }) {
+                    Text("Batal")
+                }
+            }
+        )
+    }
+}
+
+@Composable
+fun KondisiCardItem(
+    kondisi: KondisiMaster,
+    onEdit: () -> Unit,
+    onDelete: () -> Unit
+) {
+    val (icon, bgCircle, iconTint) = when {
+        kondisi.namaKondisi.equals("Baik", ignoreCase = true) -> Triple(Icons.Default.CheckCircle, PastelMintLight, PastelMintDark)
+        kondisi.namaKondisi.contains("Sedang", ignoreCase = true) -> Triple(Icons.Default.Warning, PastelButterYellow, PastelButterYellowDark)
+        kondisi.namaKondisi.equals("Rusak", ignoreCase = true) || kondisi.namaKondisi.contains("Berat", ignoreCase = true) -> Triple(Icons.Default.ReportProblem, PastelPeach.copy(alpha = 0.4f), PastelPeachDark)
+        kondisi.namaKondisi.contains("Perawatan", ignoreCase = true) || kondisi.namaKondisi.contains("Servis", ignoreCase = true) -> Triple(Icons.Default.Build, PastelSkyBlueContainer, PastelSkyBlueDark)
+        else -> Triple(Icons.Default.Info, PastelSkyBlueContainer, PastelSkyBlueDark)
+    }
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(containerColor = PastelSurface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(14.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(CircleShape)
+                    .background(bgCircle),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = kondisi.namaKondisi,
+                    tint = iconTint,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+
+            Spacer(modifier = Modifier.width(12.dp))
+
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = kondisi.namaKondisi,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 14.sp,
+                    color = TextPrimary
+                )
+                if (kondisi.deskripsi.isNotBlank()) {
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = kondisi.deskripsi,
+                        fontSize = 12.sp,
+                        color = TextSecondary
+                    )
+                }
+            }
+
+            Row {
+                IconButton(
+                    onClick = onEdit,
+                    modifier = Modifier.size(32.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Edit,
+                        contentDescription = "Edit",
+                        tint = PastelSkyBlueDark,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+
+                IconButton(
+                    onClick = onDelete,
+                    modifier = Modifier.size(32.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Delete,
+                        contentDescription = "Hapus",
+                        tint = PastelPeachDark,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun KondisiFormDialog(
+    kondisi: KondisiMaster?,
+    onDismiss: () -> Unit,
+    onSave: (nama: String, deskripsi: String) -> Unit
+) {
+    var namaKondisi by remember { mutableStateOf(kondisi?.namaKondisi ?: "") }
+    var deskripsi by remember { mutableStateOf(kondisi?.deskripsi ?: "") }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(if (kondisi == null) "Tambah Opsi Kondisi" else "Edit Opsi Kondisi", fontWeight = FontWeight.Bold) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                OutlinedTextField(
+                    value = namaKondisi,
+                    onValueChange = { namaKondisi = it },
+                    label = { Text("Nama Kondisi") },
+                    placeholder = { Text("Contoh: Perawatan Berkala") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                OutlinedTextField(
+                    value = deskripsi,
+                    onValueChange = { deskripsi = it },
+                    label = { Text("Deskripsi Kondisi") },
+                    placeholder = { Text("Contoh: Kondisi barang sedang dalam masa servis berkala") },
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    if (namaKondisi.isNotBlank()) {
+                        onSave(namaKondisi, deskripsi)
+                    }
+                },
+                colors = ButtonDefaults.buttonColors(containerColor = PastelSkyBlueDark),
+                enabled = namaKondisi.isNotBlank()
             ) {
                 Text("Simpan", fontWeight = FontWeight.Bold)
             }

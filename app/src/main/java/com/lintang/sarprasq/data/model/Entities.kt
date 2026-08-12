@@ -145,7 +145,7 @@ data class PeminjamanMakro(
     val bulanTahun: String = "", // e.g. "Juli 2026"
     val namaBarang: String = "",
     val jumlahPeminjaman: Int = 0,
-    val kondisi: String = "Aman", // "Aman", "Perlu Maintenance", "Kurang Baik"
+    val kondisi: String = "Baik", // "Baik", "Rusak Sedang", "Rusak", "Perawatan"
     val timestamp: Long = System.currentTimeMillis()
 )
 
@@ -195,6 +195,14 @@ data class SubKategoriMaster(
 data class SatuanMaster(
     @PrimaryKey(autoGenerate = true) val id: Int = 0,
     val namaSatuan: String = "",
+    val deskripsi: String = "",
+    val timestamp: Long = System.currentTimeMillis()
+)
+
+@Entity(tableName = "master_kondisi")
+data class KondisiMaster(
+    @PrimaryKey(autoGenerate = true) val id: Int = 0,
+    val namaKondisi: String = "",
     val deskripsi: String = "",
     val timestamp: Long = System.currentTimeMillis()
 )

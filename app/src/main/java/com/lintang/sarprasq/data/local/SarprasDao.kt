@@ -10,6 +10,7 @@ import com.lintang.sarprasq.data.model.ActionPlan
 import com.lintang.sarprasq.data.model.DamageReport
 import com.lintang.sarprasq.data.model.HelpdeskReport
 import com.lintang.sarprasq.data.model.KategoriMaster
+import com.lintang.sarprasq.data.model.KondisiMaster
 import com.lintang.sarprasq.data.model.SubKategoriMaster
 import com.lintang.sarprasq.data.model.PeminjamanMakro
 import com.lintang.sarprasq.data.model.ProjectTask
@@ -264,6 +265,28 @@ interface SarprasDao {
 
     @Query("DELETE FROM master_sub_kategori")
     suspend fun deleteAllSubKategori()
+
+    // --- MASTER DATA: KONDISI ---
+    @Query("SELECT * FROM master_kondisi ORDER BY id ASC")
+    fun getAllKondisi(): Flow<List<KondisiMaster>>
+
+    @Query("SELECT * FROM master_kondisi ORDER BY id ASC")
+    suspend fun getAllKondisiList(): List<KondisiMaster>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertKondisi(kondisi: KondisiMaster): Long
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertKondisiList(list: List<KondisiMaster>)
+
+    @Update
+    suspend fun updateKondisi(kondisi: KondisiMaster)
+
+    @Delete
+    suspend fun deleteKondisi(kondisi: KondisiMaster)
+
+    @Query("DELETE FROM master_kondisi")
+    suspend fun deleteAllKondisi()
 
     // --- PROJECT TASKS / TO-DO ---
     @Query("SELECT * FROM project_tasks ORDER BY timestamp DESC")

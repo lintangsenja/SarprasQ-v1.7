@@ -9,6 +9,7 @@ import com.lintang.sarprasq.data.model.ActionPlan
 import com.lintang.sarprasq.data.model.DamageReport
 import com.lintang.sarprasq.data.model.HelpdeskReport
 import com.lintang.sarprasq.data.model.KategoriMaster
+import com.lintang.sarprasq.data.model.KondisiMaster
 import com.lintang.sarprasq.data.model.SubKategoriMaster
 import com.lintang.sarprasq.data.model.PeminjamanMakro
 import com.lintang.sarprasq.data.model.ProjectTask
@@ -22,8 +23,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
 @Database(
-    entities = [HelpdeskReport::class, ActionPlan::class, SuratArsip::class, PeminjamanMakro::class, Ruang::class, StatusPenanganan::class, UrgensiMaster::class, KategoriMaster::class, SubKategoriMaster::class, SatuanMaster::class, DamageReport::class, ProjectTask::class],
-    version = 18,
+    entities = [HelpdeskReport::class, ActionPlan::class, SuratArsip::class, PeminjamanMakro::class, Ruang::class, StatusPenanganan::class, UrgensiMaster::class, KategoriMaster::class, SubKategoriMaster::class, SatuanMaster::class, KondisiMaster::class, DamageReport::class, ProjectTask::class],
+    version = 19,
     exportSchema = false
 )
 abstract class SarprasDatabase : RoomDatabase() {
@@ -64,13 +65,14 @@ abstract class SarprasDatabase : RoomDatabase() {
         }
 
         suspend fun populateDatabase(dao: SarprasDao) {
-            // Seed Master Data lists (Ruangan, Kategori, Status, Urgensi, Satuan, SubKategori)
+            // Seed Master Data lists (Ruangan, Kategori, Status, Urgensi, Satuan, SubKategori, Kondisi)
             dao.insertRuangList(getDefaultRuangList())
             dao.insertKategoriList(getDefaultKategoriList())
             dao.insertStatusPenangananList(getDefaultStatusPenangananList())
             dao.insertUrgensiList(getDefaultUrgensiList())
             dao.insertSatuanList(getDefaultSatuanList())
             dao.insertSubKategoriList(getDefaultSubKategoriList())
+            dao.insertKondisiList(getDefaultKondisiList())
         }
     }
 }
@@ -268,6 +270,31 @@ fun getDefaultSubKategoriList(): List<SubKategoriMaster> {
             id = 4,
             namaSubKategori = "Pengadaan Barang Baru",
             deskripsi = "Pengadaan baru fasilitas, peralatan, atau perlengkapan pendukung"
+        )
+    )
+}
+
+fun getDefaultKondisiList(): List<KondisiMaster> {
+    return listOf(
+        KondisiMaster(
+            id = 1,
+            namaKondisi = "Baik",
+            deskripsi = "Barang/sarpras dalam kondisi prima, berfungsi normal 100% tanpa kendala"
+        ),
+        KondisiMaster(
+            id = 2,
+            namaKondisi = "Rusak Sedang",
+            deskripsi = "Barang/sarpras mengalami kendala fungsi sebagian namun masih dapat digunakan dengan catatan"
+        ),
+        KondisiMaster(
+            id = 3,
+            namaKondisi = "Rusak",
+            deskripsi = "Barang/sarpras mengalami kerusakan total atau tidak dapat digunakan sama sekali"
+        ),
+        KondisiMaster(
+            id = 4,
+            namaKondisi = "Perawatan",
+            deskripsi = "Barang/sarpras sedang dalam tahap pemeliharaan, servis, atau perbaikan teknis"
         )
     )
 }

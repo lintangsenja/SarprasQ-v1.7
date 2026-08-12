@@ -31,12 +31,14 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import com.lintang.sarprasq.data.model.SuratArsip
 import com.lintang.sarprasq.ui.theme.PastelSkyBlueDark
 import com.lintang.sarprasq.ui.theme.TextPrimary
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AddSuratDialog(
+    suratToEdit: SuratArsip? = null,
     onDismiss: () -> Unit,
     onSubmit: (
         nomorSurat: String,
@@ -49,11 +51,11 @@ fun AddSuratDialog(
     val sdf = java.text.SimpleDateFormat("dd/MM/yyyy", java.util.Locale.getDefault())
     val today = sdf.format(java.util.Date())
 
-    var nomorSurat by remember { mutableStateOf("") }
-    var tanggalSurat by remember { mutableStateOf(today) }
-    var perihal by remember { mutableStateOf("") }
-    var jenisSurat by remember { mutableStateOf("Surat Masuk") }
-    var statusArsip by remember { mutableStateOf("Arsip Fisik & Digital") }
+    var nomorSurat by remember { mutableStateOf(suratToEdit?.nomorSurat ?: "") }
+    var tanggalSurat by remember { mutableStateOf(suratToEdit?.tanggalSurat?.ifBlank { today } ?: today) }
+    var perihal by remember { mutableStateOf(suratToEdit?.perihal ?: "") }
+    var jenisSurat by remember { mutableStateOf(suratToEdit?.jenisSurat?.ifBlank { "Surat Masuk" } ?: "Surat Masuk") }
+    var statusArsip by remember { mutableStateOf(suratToEdit?.statusArsip?.ifBlank { "Arsip Fisik & Digital" } ?: "Arsip Fisik & Digital") }
 
     var expandedJenis by remember { mutableStateOf(false) }
     var expandedArsip by remember { mutableStateOf(false) }
@@ -73,7 +75,7 @@ fun AddSuratDialog(
                 modifier = Modifier.padding(20.dp)
             ) {
                 Text(
-                    text = "Tambah Arsip Surat Sarpras",
+                    text = if (suratToEdit == null) "Tambah Arsip Surat Sarpras" else "Edit Arsip Surat Sarpras",
                     fontSize = 18.sp,
                     fontWeight = FontWeight.Bold,
                     color = TextPrimary
@@ -202,7 +204,7 @@ fun AddSuratDialog(
                         colors = ButtonDefaults.buttonColors(containerColor = PastelSkyBlueDark),
                         shape = RoundedCornerShape(12.dp)
                     ) {
-                        Text("Simpan Surat")
+                        Text(if (suratToEdit == null) "Simpan Surat" else "Simpan Perubahan")
                     }
                 }
             }

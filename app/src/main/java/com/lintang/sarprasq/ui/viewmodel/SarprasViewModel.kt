@@ -16,6 +16,7 @@ import com.lintang.sarprasq.data.model.calculateCalculatedUrgency
 import com.lintang.sarprasq.data.model.formatCombinedDamageDeskripsi
 import com.lintang.sarprasq.data.model.parseDamageItemsFromReport
 import com.lintang.sarprasq.data.model.KategoriMaster
+import com.lintang.sarprasq.data.model.KondisiMaster
 import com.lintang.sarprasq.data.model.SubKategoriMaster
 import com.lintang.sarprasq.data.model.PeminjamanMakro
 import com.lintang.sarprasq.data.model.ProjectTask
@@ -435,6 +436,9 @@ class SarprasViewModel(application: Application) : AndroidViewModel(application)
     val allSubKategori: StateFlow<List<SubKategoriMaster>> = repository.allSubKategori
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    val allKondisi: StateFlow<List<KondisiMaster>> = repository.allKondisi
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
     val allDamageReports: StateFlow<List<DamageReport>> = repository.allDamageReports
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
@@ -727,9 +731,22 @@ class SarprasViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    fun insertSuratArsipList(list: List<SuratArsip>, onComplete: ((Int) -> Unit)? = null) {
+        viewModelScope.launch {
+            repository.insertSuratArsipList(list)
+            onComplete?.invoke(list.size)
+        }
+    }
+
     fun deleteSuratArsip(surat: SuratArsip) {
         viewModelScope.launch {
             repository.deleteSuratArsip(surat)
+        }
+    }
+
+    fun updateSuratArsip(surat: SuratArsip) {
+        viewModelScope.launch {
+            repository.insertSuratArsip(surat)
         }
     }
 
@@ -749,6 +766,13 @@ class SarprasViewModel(application: Application) : AndroidViewModel(application)
                 timestamp = System.currentTimeMillis()
             )
             repository.insertPeminjamanMakro(item)
+        }
+    }
+
+    fun insertPeminjamanMakroList(list: List<PeminjamanMakro>, onComplete: (() -> Unit)? = null) {
+        viewModelScope.launch {
+            repository.insertPeminjamanMakroList(list)
+            onComplete?.invoke()
         }
     }
 
@@ -937,6 +961,36 @@ class SarprasViewModel(application: Application) : AndroidViewModel(application)
     fun resetDefaultSubKategori() {
         viewModelScope.launch {
             repository.resetDefaultSubKategori()
+        }
+    }
+
+    // --- Actions: Master Data Kondisi ---
+    fun addKondisi(namaKondisi: String, deskripsi: String) {
+        viewModelScope.launch {
+            val kondisi = KondisiMaster(
+                namaKondisi = namaKondisi,
+                deskripsi = deskripsi,
+                timestamp = System.currentTimeMillis()
+            )
+            repository.insertKondisi(kondisi)
+        }
+    }
+
+    fun updateKondisi(kondisi: KondisiMaster) {
+        viewModelScope.launch {
+            repository.updateKondisi(kondisi)
+        }
+    }
+
+    fun deleteKondisi(kondisi: KondisiMaster) {
+        viewModelScope.launch {
+            repository.deleteKondisi(kondisi)
+        }
+    }
+
+    fun resetDefaultKondisi() {
+        viewModelScope.launch {
+            repository.resetDefaultKondisi()
         }
     }
 

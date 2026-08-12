@@ -13,6 +13,7 @@ import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.storage.FirebaseStorage
 import com.lintang.sarprasq.data.local.SarprasDao
 import com.lintang.sarprasq.data.local.getDefaultKategoriList
+import com.lintang.sarprasq.data.local.getDefaultKondisiList
 import com.lintang.sarprasq.data.local.getDefaultRuangList
 import com.lintang.sarprasq.data.local.getDefaultSatuanList
 import com.lintang.sarprasq.data.local.getDefaultStatusPenangananList
@@ -22,6 +23,7 @@ import com.lintang.sarprasq.data.model.ActionPlan
 import com.lintang.sarprasq.data.model.DamageReport
 import com.lintang.sarprasq.data.model.HelpdeskReport
 import com.lintang.sarprasq.data.model.KategoriMaster
+import com.lintang.sarprasq.data.model.KondisiMaster
 import com.lintang.sarprasq.data.model.PeminjamanMakro
 import com.lintang.sarprasq.data.model.ProjectTask
 import com.lintang.sarprasq.data.model.Ruang
@@ -277,6 +279,13 @@ class SarprasRepository(
         syncSuratToFirebase(finalSurat)
     }
 
+    suspend fun insertSuratArsipList(suratList: List<SuratArsip>) {
+        dao.insertSuratArsipList(suratList)
+        suratList.forEach { surat ->
+            syncSuratToFirebase(surat)
+        }
+    }
+
     suspend fun deleteSuratArsip(surat: SuratArsip) {
         dao.deleteSuratArsip(surat)
         try {
@@ -320,6 +329,13 @@ class SarprasRepository(
         val generatedId = dao.insertPeminjamanMakro(peminjaman)
         val finalPeminjaman = if (peminjaman.id == 0) peminjaman.copy(id = generatedId.toInt()) else peminjaman
         syncPeminjamanToFirebase(finalPeminjaman)
+    }
+
+    suspend fun insertPeminjamanMakroList(list: List<PeminjamanMakro>) {
+        dao.insertPeminjamanMakroList(list)
+        list.forEach { item ->
+            syncPeminjamanToFirebase(item)
+        }
     }
 
     suspend fun deletePeminjamanMakro(peminjaman: PeminjamanMakro) {
@@ -746,6 +762,68 @@ class SarprasRepository(
         }
     }
 
+    // --- Master Data: Kondisi ---
+    val allKondisi: Flow<List<KondisiMaster>> = dao.getAllKondisi()
+
+    suspend fun getAllKondisiList(): List<KondisiMaster> = dao.getAllKondisiList()
+
+    suspend fun insertKondisi(kondisi: KondisiMaster) {
+        val id = dao.insertKondisi(kondisi)
+        val finalItem = if (kondisi.id == 0) kondisi.copy(id = id.toInt()) else kondisi
+        syncKondisiToFirebase(finalItem)
+    }
+
+    suspend fun updateKondisi(kondisi: KondisiMaster) {
+        dao.updateKondisi(kondisi)
+        syncKondisiToFirebase(kondisi)
+    }
+
+    suspend fun deleteKondisi(kondisi: KondisiMaster) {
+        dao.deleteKondisi(kondisi)
+        try {
+            getDatabaseRef()?.child("master_kondisi")?.child(kondisi.id.toString())?.removeValue()
+        } catch (e: Exception) {
+            Log.e("SarprasRepository", "Failed to delete Kondisi from RTDB: ${e.message}")
+        }
+        try {
+            getFirestoreInstance()?.collection("master_kondisi")?.document(kondisi.id.toString())?.delete()
+        } catch (e: Exception) {
+            Log.e("SarprasRepository", "Failed to delete Kondisi from Firestore: ${e.message}")
+        }
+    }
+
+    private fun syncKondisiToFirebase(kondisi: KondisiMaster) {
+        try {
+            getDatabaseRef()?.child("master_kondisi")?.child(kondisi.id.toString())?.setValue(kondisi)
+        } catch (e: Exception) {
+            Log.e("SarprasRepository", "Failed to sync Kondisi to RTDB: ${e.message}")
+        }
+        try {
+            getFirestoreInstance()?.collection("master_kondisi")?.document(kondisi.id.toString())?.set(kondisi)
+        } catch (e: Exception) {
+            Log.e("SarprasRepository", "Failed to sync Kondisi to Firestore: ${e.message}")
+        }
+    }
+
+    suspend fun resetDefaultKondisi() {
+        val defaults = getDefaultKondisiList()
+        dao.deleteAllKondisi()
+        dao.insertKondisiList(defaults)
+        try {
+            getDatabaseRef()?.child("master_kondisi")?.setValue(defaults.associateBy { it.id.toString() })
+        } catch (e: Exception) {
+            Log.e("SarprasRepository", "Failed to reset Kondisi in RTDB: ${e.message}")
+        }
+        try {
+            val fs = getFirestoreInstance()
+            if (fs != null) {
+                defaults.forEach { item -> fs.collection("master_kondisi").document(item.id.toString()).set(item) }
+            }
+        } catch (e: Exception) {
+            Log.e("SarprasRepository", "Failed to reset Kondisi in Firestore: ${e.message}")
+        }
+    }
+
     // --- Damage Reports (Room-based Multi-item Damage) ---
     val allDamageReports: Flow<List<DamageReport>> = dao.getAllDamageReports()
 
@@ -972,7 +1050,7 @@ class SarprasRepository(
                 bulanTahun = "Juli 2026",
                 namaBarang = "Proyektor Portable (Unit Sekolah)",
                 jumlahPeminjaman = 14,
-                kondisi = "Aman",
+                kondisi = "Baik",
                 timestamp = currentTime - 1000
             ),
             PeminjamanMakro(
@@ -980,7 +1058,7 @@ class SarprasRepository(
                 bulanTahun = "Juli 2026",
                 namaBarang = "Sound System Wireless Portable",
                 jumlahPeminjaman = 6,
-                kondisi = "Aman",
+                kondisi = "Baik",
                 timestamp = currentTime - 2000
             ),
             PeminjamanMakro(
@@ -988,7 +1066,7 @@ class SarprasRepository(
                 bulanTahun = "Juli 2026",
                 namaBarang = "Kabel Roll Listrik 50m Heavy Duty",
                 jumlahPeminjaman = 18,
-                kondisi = "Aman",
+                kondisi = "Baik",
                 timestamp = currentTime - 3000
             ),
             PeminjamanMakro(

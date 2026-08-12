@@ -22,6 +22,9 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
@@ -30,11 +33,16 @@ import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Inventory2
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.TaskAlt
+import androidx.compose.material.icons.filled.UploadFile
 import androidx.compose.material.icons.filled.Warning
+import androidx.compose.ui.platform.LocalContext
+import com.lintang.sarprasq.util.SuratExcelHelper
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -69,6 +77,8 @@ import com.lintang.sarprasq.data.model.HelpdeskReport
 import com.lintang.sarprasq.data.model.PeminjamanMakro
 import com.lintang.sarprasq.data.model.ProjectTask
 import com.lintang.sarprasq.data.model.SuratArsip
+import com.lintang.sarprasq.ui.components.AddSuratDialog
+import com.lintang.sarprasq.ui.components.SuratDetailDialog
 import com.lintang.sarprasq.ui.theme.PastelButterYellow
 import com.lintang.sarprasq.ui.theme.PastelButterYellowDark
 import com.lintang.sarprasq.ui.theme.PastelCardBorder
@@ -110,6 +120,10 @@ fun AdministrasiScreen(
     var reportToDelete by remember { mutableStateOf<HelpdeskReport?>(null) }
     var suratToDelete by remember { mutableStateOf<SuratArsip?>(null) }
     var peminjamanToDelete by remember { mutableStateOf<PeminjamanMakro?>(null) }
+
+    // Dialog state for Surat Detail & Edit
+    var selectedSuratDetail by remember { mutableStateOf<SuratArsip?>(null) }
+    var suratToEdit by remember { mutableStateOf<SuratArsip?>(null) }
 
     // Count completed physical tasks
     val completedTasks = remember(allTasks) {
@@ -286,7 +300,9 @@ fun AdministrasiScreen(
                 )
                 1 -> SuratArchiveTabContent(
                     suratList = suratList,
-                    onDeleteSurat = { suratToDelete = it }
+                    viewModel = viewModel,
+                    onDeleteSurat = { suratToDelete = it },
+                    onSelectSurat = { selectedSuratDetail = it }
                 )
                 2 -> PeminjamanArchiveTabContent(
                     peminjamanList = peminjamanList,
@@ -503,6 +519,42 @@ fun AdministrasiScreen(
             },
             shape = RoundedCornerShape(20.dp),
             containerColor = Color.White
+        )
+    }
+
+    // 5. Detail Surat Dialog
+    selectedSuratDetail?.let { surat ->
+        SuratDetailDialog(
+            surat = surat,
+            onDismiss = { selectedSuratDetail = null },
+            onEdit = { editedSurat ->
+                selectedSuratDetail = null
+                suratToEdit = editedSurat
+            },
+            onDelete = { deletedSurat ->
+                selectedSuratDetail = null
+                suratToDelete = deletedSurat
+            }
+        )
+    }
+
+    // 6. Edit Surat Dialog
+    suratToEdit?.let { targetSurat ->
+        AddSuratDialog(
+            suratToEdit = targetSurat,
+            onDismiss = { suratToEdit = null },
+            onSubmit = { nomorSurat, tanggalSurat, perihal, jenisSurat, statusArsip ->
+                viewModel.updateSuratArsip(
+                    targetSurat.copy(
+                        nomorSurat = nomorSurat,
+                        tanggalSurat = tanggalSurat,
+                        perihal = perihal,
+                        jenisSurat = jenisSurat,
+                        statusArsip = statusArsip
+                    )
+                )
+                suratToEdit = null
+            }
         )
     }
 }
@@ -894,10 +946,32 @@ fun ArchivedReportCard(
 @Composable
 fun SuratArchiveTabContent(
     suratList: List<SuratArsip>,
-    onDeleteSurat: (SuratArsip) -> Unit
+    viewModel: SarprasViewModel,
+    onDeleteSurat: (SuratArsip) -> Unit,
+    onSelectSurat: (SuratArsip) -> Unit
 ) {
+    val context = LocalContext.current
     var selectedJenisFilter by remember { mutableStateOf("Semua") } // "Semua", "Surat Masuk", "Surat Keluar", "Nota Dinas", "Permohonan Perbaikan"
     var searchQuery by remember { mutableStateOf("") }
+
+    var showImportDialog by remember { mutableStateOf(false) }
+    var parsedImportItems by remember { mutableStateOf<List<SuratArsip>>(emptyList()) }
+
+    // SAF Open Document Launcher untuk File Excel Template (.xlsx)
+    val excelPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        uri?.let { fileUri ->
+            val parseResult = SuratExcelHelper.parseSuratArsipFromXlsx(context, fileUri)
+            if (parseResult.success && parseResult.items.isNotEmpty()) {
+                parsedImportItems = parseResult.items
+                showImportDialog = true
+            } else {
+                val errMsg = parseResult.message.ifBlank { "Format file Excel tidak sesuai dengan master Arsip Surat." }
+                Toast.makeText(context, "Gagal Impor Excel: $errMsg", Toast.LENGTH_LONG).show()
+            }
+        }
+    }
 
     val jenisFilters = listOf("Semua", "Surat Masuk", "Surat Keluar", "Nota Dinas", "Permohonan Perbaikan")
 
@@ -919,6 +993,111 @@ fun SuratArchiveTabContent(
     }
 
     Column(modifier = Modifier.fillMaxSize()) {
+        // --- 3 TOMBOL AKSI HEADER ARSIP SURAT ---
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            // 1. Unduh Template
+            OutlinedButton(
+                onClick = {
+                    val result = SuratExcelHelper.generateTemplateXlsx(context)
+                    if (result != null) {
+                        Toast.makeText(
+                            context,
+                            "✓ Template Excel berhasil diunduh ke folder Downloads:\n${result.fileName}",
+                            Toast.LENGTH_LONG
+                        ).show()
+                    }
+                },
+                modifier = Modifier.weight(1f),
+                shape = RoundedCornerShape(12.dp),
+                colors = ButtonDefaults.outlinedButtonColors(
+                    containerColor = PastelLavender.copy(alpha = 0.25f),
+                    contentColor = PastelLavenderDark
+                ),
+                border = androidx.compose.foundation.BorderStroke(1.dp, PastelLavenderDark.copy(alpha = 0.5f)),
+                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 8.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Download,
+                    contentDescription = "Unduh Template",
+                    modifier = Modifier.size(15.dp)
+                )
+                Spacer(modifier = Modifier.width(4.dp))
+                Text("Unduh Template", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+            }
+
+            // 2. Impor Excel
+            Button(
+                onClick = {
+                    excelPickerLauncher.launch(
+                        arrayOf(
+                            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                            "application/vnd.ms-excel",
+                            "application/zip",
+                            "application/octet-stream",
+                            "*/*"
+                        )
+                    )
+                },
+                modifier = Modifier.weight(1f),
+                shape = RoundedCornerShape(12.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = PastelLavenderDark,
+                    contentColor = Color.White
+                ),
+                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 8.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.UploadFile,
+                    contentDescription = "Impor Excel",
+                    modifier = Modifier.size(15.dp)
+                )
+                Spacer(modifier = Modifier.width(4.dp))
+                Text("Impor Excel", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+            }
+
+            // 3. Ekspor Data
+            OutlinedButton(
+                onClick = {
+                    if (suratList.isEmpty()) {
+                        Toast.makeText(context, "Belum ada data arsip surat untuk diekspor!", Toast.LENGTH_SHORT).show()
+                    } else {
+                        val result = SuratExcelHelper.exportSuratArsipToXlsx(
+                            context = context,
+                            suratList = filteredSurat.ifEmpty { suratList }
+                        )
+                        if (result != null) {
+                            Toast.makeText(
+                                context,
+                                "✓ Data Arsip Surat berhasil diekspor ke folder Downloads:\n${result.fileName}",
+                                Toast.LENGTH_LONG
+                            ).show()
+                        }
+                    }
+                },
+                modifier = Modifier.weight(1f),
+                shape = RoundedCornerShape(12.dp),
+                colors = ButtonDefaults.outlinedButtonColors(
+                    containerColor = PastelMint.copy(alpha = 0.25f),
+                    contentColor = PastelMintDark
+                ),
+                border = androidx.compose.foundation.BorderStroke(1.dp, PastelMintDark.copy(alpha = 0.5f)),
+                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 8.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.FileDownload,
+                    contentDescription = "Ekspor Data",
+                    modifier = Modifier.size(15.dp)
+                )
+                Spacer(modifier = Modifier.width(4.dp))
+                Text("Ekspor Data", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+            }
+        }
+
+        Spacer(modifier = Modifier.height(10.dp))
+
         OutlinedTextField(
             value = searchQuery,
             onValueChange = { searchQuery = it },
@@ -969,7 +1148,9 @@ fun SuratArchiveTabContent(
                         shape = RoundedCornerShape(20.dp),
                         colors = CardDefaults.cardColors(containerColor = Color.White),
                         border = androidx.compose.foundation.BorderStroke(1.dp, PastelCardBorder),
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onSelectSurat(surat) }
                     ) {
                         Column(modifier = Modifier.padding(16.dp)) {
                             Row(
@@ -1035,6 +1216,85 @@ fun SuratArchiveTabContent(
                 }
             }
         }
+    }
+
+    // --- DIALOG KONFIRMASI PRATINJAU IMPOR BATCH EXCEL ---
+    if (showImportDialog && parsedImportItems.isNotEmpty()) {
+        AlertDialog(
+            onDismissRequest = { showImportDialog = false },
+            title = {
+                Text(
+                    text = "Konfirmasi Impor Data Excel",
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = TextPrimary
+                )
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(
+                        text = "Smart Parser berhasil membaca ${parsedImportItems.size} data arsip surat dari berkas Excel.",
+                        fontSize = 12.5.sp,
+                        color = TextPrimary
+                    )
+
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(PastelLavender.copy(alpha = 0.35f))
+                            .padding(12.dp)
+                    ) {
+                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text(
+                                text = "Pratinjau Sampel Data:",
+                                fontSize = 11.5.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = PastelLavenderDark
+                            )
+                            val sample = parsedImportItems.first()
+                            Text("• Nomor: ${sample.nomorSurat}", fontSize = 11.sp, color = TextPrimary)
+                            Text("• Tanggal: ${sample.tanggalSurat}", fontSize = 11.sp, color = TextPrimary)
+                            Text("• Perihal: ${sample.perihal}", fontSize = 11.sp, color = TextPrimary)
+                            Text("• Jenis: ${sample.jenisSurat} (${sample.statusArsip})", fontSize = 11.sp, color = TextSecondary)
+                        }
+                    }
+
+                    Text(
+                        text = "Tekan 'Simpan Batch' untuk menyimpan data ke Room Database & menyinkronkannya secara otomatis ke Firebase.",
+                        fontSize = 11.5.sp,
+                        color = TextSecondary
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val count = parsedImportItems.size
+                        viewModel.insertSuratArsipList(parsedImportItems) {
+                            Toast.makeText(
+                                context,
+                                "✓ Berhasil mengimpor $count data arsip surat ke database!",
+                                Toast.LENGTH_LONG
+                            ).show()
+                        }
+                        showImportDialog = false
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = PastelLavenderDark),
+                    shape = RoundedCornerShape(10.dp)
+                ) {
+                    Text("Simpan Batch (${parsedImportItems.size})", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                OutlinedButton(
+                    onClick = { showImportDialog = false },
+                    shape = RoundedCornerShape(10.dp)
+                ) {
+                    Text("Batal", fontSize = 12.sp, color = TextSecondary)
+                }
+            }
+        )
     }
 }
 
@@ -1105,7 +1365,7 @@ fun PeminjamanArchiveTabContent(
                                         color = TextPrimary
                                     )
                                     Text(
-                                        text = "Periode Bulan: ${item.bulanTahun}",
+                                        text = "Jadwal / Periode: ${item.bulanTahun}",
                                         fontSize = 12.sp,
                                         color = TextSecondary
                                     )
@@ -1157,12 +1417,12 @@ fun PeminjamanArchiveTabContent(
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Text(
-                                        text = "Rekap Peminjaman Global:",
+                                        text = "Jumlah Unit Dipinjam:",
                                         fontSize = 12.sp,
                                         color = TextSecondary
                                     )
                                     Text(
-                                        text = "${item.jumlahPeminjaman} Kali Peminjaman",
+                                        text = "${item.jumlahPeminjaman} Unit",
                                         fontSize = 14.sp,
                                         fontWeight = FontWeight.ExtraBold,
                                         color = PastelSkyBlueDark

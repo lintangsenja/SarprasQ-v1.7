@@ -44,6 +44,7 @@ fun AddSuratDialog(
         nomorSurat: String,
         tanggalSurat: String,
         perihal: String,
+        deskripsiSurat: String,
         jenisSurat: String,
         statusArsip: String
     ) -> Unit
@@ -54,6 +55,7 @@ fun AddSuratDialog(
     var nomorSurat by remember { mutableStateOf(suratToEdit?.nomorSurat ?: "") }
     var tanggalSurat by remember { mutableStateOf(suratToEdit?.tanggalSurat?.ifBlank { today } ?: today) }
     var perihal by remember { mutableStateOf(suratToEdit?.perihal ?: "") }
+    var deskripsiSurat by remember { mutableStateOf(suratToEdit?.deskripsiSurat ?: "") }
     var jenisSurat by remember { mutableStateOf(suratToEdit?.jenisSurat?.ifBlank { "Surat Masuk" } ?: "Surat Masuk") }
     var statusArsip by remember { mutableStateOf(suratToEdit?.statusArsip?.ifBlank { "Arsip Fisik & Digital" } ?: "Arsip Fisik & Digital") }
 
@@ -108,6 +110,19 @@ fun AddSuratDialog(
                     label = { Text("Perihal / Instansi") },
                     placeholder = { Text("Contoh: Permohonan Perbaikan Plafon") },
                     modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
+                )
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                OutlinedTextField(
+                    value = deskripsiSurat,
+                    onValueChange = { deskripsiSurat = it },
+                    label = { Text("Deskripsi Surat") },
+                    placeholder = { Text("Catatan / Rincian isi surat") },
+                    modifier = Modifier.fillMaxWidth(),
+                    minLines = 2,
+                    maxLines = 4,
                     shape = RoundedCornerShape(12.dp)
                 )
 
@@ -198,7 +213,7 @@ fun AddSuratDialog(
                     Button(
                         onClick = {
                             if (nomorSurat.isNotBlank() && perihal.isNotBlank()) {
-                                onSubmit(nomorSurat, tanggalSurat, perihal, jenisSurat, statusArsip)
+                                onSubmit(nomorSurat, tanggalSurat, perihal, deskripsiSurat, jenisSurat, statusArsip)
                             }
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = PastelSkyBlueDark),

@@ -24,7 +24,7 @@ import kotlinx.coroutines.launch
 
 @Database(
     entities = [HelpdeskReport::class, ActionPlan::class, SuratArsip::class, PeminjamanMakro::class, Ruang::class, StatusPenanganan::class, UrgensiMaster::class, KategoriMaster::class, SubKategoriMaster::class, SatuanMaster::class, KondisiMaster::class, DamageReport::class, ProjectTask::class],
-    version = 19,
+    version = 20,
     exportSchema = false
 )
 abstract class SarprasDatabase : RoomDatabase() {

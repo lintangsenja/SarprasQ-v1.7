@@ -543,12 +543,13 @@ fun AdministrasiScreen(
         AddSuratDialog(
             suratToEdit = targetSurat,
             onDismiss = { suratToEdit = null },
-            onSubmit = { nomorSurat, tanggalSurat, perihal, jenisSurat, statusArsip ->
+            onSubmit = { nomorSurat, tanggalSurat, perihal, deskripsiSurat, jenisSurat, statusArsip ->
                 viewModel.updateSuratArsip(
                     targetSurat.copy(
                         nomorSurat = nomorSurat,
                         tanggalSurat = tanggalSurat,
                         perihal = perihal,
+                        deskripsiSurat = deskripsiSurat,
                         jenisSurat = jenisSurat,
                         statusArsip = statusArsip
                     )

@@ -964,7 +964,11 @@ private fun SuratPreviewCard(item: SuratArsip) {
                 Text(item.tanggalSurat, fontSize = 11.sp, color = TextSecondary)
             }
             Spacer(modifier = Modifier.height(4.dp))
-            Text(item.perihal, fontSize = 12.sp, color = TextSecondary)
+            Text(item.perihal, fontSize = 12.sp, fontWeight = FontWeight.Medium, color = TextPrimary)
+            if (item.deskripsiSurat.isNotBlank()) {
+                Spacer(modifier = Modifier.height(2.dp))
+                Text("Deskripsi: ${item.deskripsiSurat}", fontSize = 11.sp, color = TextSecondary, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            }
             Spacer(modifier = Modifier.height(6.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 StatusTag(item.jenisSurat, PastelSkyBlueContainer, PastelSkyBlueDark)

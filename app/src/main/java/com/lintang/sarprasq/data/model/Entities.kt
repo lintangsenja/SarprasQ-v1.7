@@ -134,6 +134,7 @@ data class SuratArsip(
     val nomorSurat: String = "",
     val tanggalSurat: String = "",
     val perihal: String = "",
+    val deskripsiSurat: String = "",
     val jenisSurat: String = "Masuk", // "Masuk", "Keluar"
     val statusArsip: String = "Arsip Fisik & Digital",
     val timestamp: Long = System.currentTimeMillis()

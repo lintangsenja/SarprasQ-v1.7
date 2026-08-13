@@ -195,6 +195,41 @@ fun SuratDetailDialog(
                         }
                     }
 
+                    // Deskripsi Surat
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(Color(0xFFF8FAFC))
+                            .border(1.dp, PastelCardBorder, RoundedCornerShape(14.dp))
+                            .padding(12.dp)
+                    ) {
+                        Column {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    imageVector = Icons.Default.Info,
+                                    contentDescription = null,
+                                    tint = PastelSkyBlueDark,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = "Deskripsi Surat",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    color = TextSecondary
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Text(
+                                text = surat.deskripsiSurat.ifBlank { "-" },
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Normal,
+                                color = TextPrimary
+                            )
+                        }
+                    }
+
                     // Jenis Surat & Status Kelengkapan Arsip
                     Row(
                         modifier = Modifier.fillMaxWidth(),

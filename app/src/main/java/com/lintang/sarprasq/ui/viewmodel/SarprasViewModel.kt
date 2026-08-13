@@ -715,6 +715,7 @@ class SarprasViewModel(application: Application) : AndroidViewModel(application)
         nomorSurat: String,
         tanggalSurat: String,
         perihal: String,
+        deskripsiSurat: String = "",
         jenisSurat: String,
         statusArsip: String
     ) {
@@ -723,6 +724,7 @@ class SarprasViewModel(application: Application) : AndroidViewModel(application)
                 nomorSurat = nomorSurat,
                 tanggalSurat = tanggalSurat,
                 perihal = perihal,
+                deskripsiSurat = deskripsiSurat,
                 jenisSurat = jenisSurat,
                 statusArsip = statusArsip,
                 timestamp = System.currentTimeMillis()
@@ -1158,6 +1160,7 @@ class SarprasViewModel(application: Application) : AndroidViewModel(application)
                 obj.put("nomorSurat", s.nomorSurat)
                 obj.put("tanggalSurat", s.tanggalSurat)
                 obj.put("perihal", s.perihal)
+                obj.put("deskripsiSurat", s.deskripsiSurat)
                 obj.put("jenisSurat", s.jenisSurat)
                 obj.put("statusArsip", s.statusArsip)
                 obj.put("timestamp", s.timestamp)
@@ -1337,6 +1340,7 @@ class SarprasViewModel(application: Application) : AndroidViewModel(application)
                     obj.put("nomorSurat", s.nomorSurat)
                     obj.put("tanggalSurat", s.tanggalSurat)
                     obj.put("perihal", s.perihal)
+                    obj.put("deskripsiSurat", s.deskripsiSurat)
                     obj.put("jenisSurat", s.jenisSurat)
                     obj.put("statusArsip", s.statusArsip)
                     obj.put("timestamp", s.timestamp)
@@ -1530,6 +1534,7 @@ class SarprasViewModel(application: Application) : AndroidViewModel(application)
                                 nomorSurat = obj.optString("nomorSurat", ""),
                                 tanggalSurat = obj.optString("tanggalSurat", ""),
                                 perihal = obj.optString("perihal", ""),
+                                deskripsiSurat = obj.optString("deskripsiSurat", ""),
                                 jenisSurat = obj.optString("jenisSurat", "Masuk"),
                                 statusArsip = obj.optString("statusArsip", "Tersimpan"),
                                 timestamp = obj.optLong("timestamp", System.currentTimeMillis())

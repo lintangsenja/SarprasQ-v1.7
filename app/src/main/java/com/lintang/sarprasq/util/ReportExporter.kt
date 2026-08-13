@@ -458,11 +458,12 @@ object ReportExporter {
                 ReportCategory.ADMINISTRASI -> {
                     val cols = listOf(
                         "No" to 25f,
-                        "Nomor Surat" to 110f,
-                        "Tanggal" to 65f,
-                        "Perihal Dokumen" to 180f,
-                        "Jenis Surat" to 75f,
-                        "Status" to 60f
+                        "Nomor Surat" to 90f,
+                        "Tanggal" to 55f,
+                        "Perihal Dokumen" to 115f,
+                        "Deskripsi Surat" to 120f,
+                        "Jenis Surat" to 55f,
+                        "Status" to 55f
                     )
                     drawTableHeader(cols)
 
@@ -475,10 +476,11 @@ object ReportExporter {
 
                         val data = listOf(
                             "${idx + 1}",
-                            item.nomorSurat.take(18),
+                            item.nomorSurat.take(15),
                             item.tanggalSurat.take(10),
-                            item.perihal.take(30),
-                            item.jenisSurat.take(12),
+                            item.perihal.take(20),
+                            item.deskripsiSurat.ifBlank { "-" }.take(22),
+                            item.jenisSurat.take(10),
                             item.statusArsip.take(10)
                         )
                         cols.forEachIndexed { colIdx, (_, width) ->
@@ -694,13 +696,14 @@ object ReportExporter {
                     }
                 }
                 ReportCategory.ADMINISTRASI -> {
-                    addRow(r++, listOf("No", "Nomor Surat", "Tanggal Surat", "Perihal Dokumen", "Jenis Surat", "Status Arsip"))
+                    addRow(r++, listOf("No", "Nomor Surat", "Tanggal Surat", "Perihal Dokumen", "Deskripsi Surat", "Jenis Surat", "Status Arsip"))
                     suratList.forEachIndexed { idx, item ->
                         addRow(r++, listOf(
                             "${idx + 1}",
                             item.nomorSurat,
                             item.tanggalSurat,
                             item.perihal,
+                            item.deskripsiSurat,
                             item.jenisSurat,
                             item.statusArsip
                         ))
@@ -924,9 +927,9 @@ object ReportExporter {
                     addTable(headersPinjam, rowsPinjam)
                 }
                 ReportCategory.ADMINISTRASI -> {
-                    val headers = listOf("No", "Nomor Surat", "Tanggal Surat", "Perihal Dokumen", "Jenis Surat", "Status Arsip")
+                    val headers = listOf("No", "Nomor Surat", "Tanggal Surat", "Perihal Dokumen", "Deskripsi Surat", "Jenis Surat", "Status Arsip")
                     val rows = suratList.mapIndexed { idx, item ->
-                        listOf("${idx + 1}", item.nomorSurat, item.tanggalSurat, item.perihal, item.jenisSurat, item.statusArsip)
+                        listOf("${idx + 1}", item.nomorSurat, item.tanggalSurat, item.perihal, item.deskripsiSurat.ifBlank { "-" }, item.jenisSurat, item.statusArsip)
                     }
                     addTable(headers, rows)
                 }

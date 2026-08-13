@@ -671,11 +671,12 @@ fun SarprasMainApp(viewModel: SarprasViewModel) {
     if (showAddSuratDialog) {
         AddSuratDialog(
             onDismiss = { showAddSuratDialog = false },
-            onSubmit = { nomorSurat, tanggalSurat, perihal, jenisSurat, statusArsip ->
+            onSubmit = { nomorSurat, tanggalSurat, perihal, deskripsiSurat, jenisSurat, statusArsip ->
                 viewModel.addSuratArsip(
                     nomorSurat = nomorSurat,
                     tanggalSurat = tanggalSurat,
                     perihal = perihal,
+                    deskripsiSurat = deskripsiSurat,
                     jenisSurat = jenisSurat,
                     statusArsip = statusArsip
                 )

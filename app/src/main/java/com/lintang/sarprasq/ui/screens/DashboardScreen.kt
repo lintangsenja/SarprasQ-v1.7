@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -66,12 +67,14 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import com.lintang.sarprasq.data.model.ActionPlan
 import com.lintang.sarprasq.data.model.HelpdeskReport
 import com.lintang.sarprasq.data.model.ProjectTask
+import com.lintang.sarprasq.data.model.SuratArsip
 import com.lintang.sarprasq.ui.components.ActionPlanDetailDialog
 import com.lintang.sarprasq.ui.components.AddActionPlanDialog
 import com.lintang.sarprasq.ui.components.StartActionPlanDialog
@@ -113,6 +116,7 @@ fun DashboardScreen(
     val reports by viewModel.allReports.collectAsState()
     val plans by viewModel.actionPlans.collectAsState()
     val projectTasks by viewModel.allProjectTasks.collectAsState()
+    val suratList by viewModel.suratArsipList.collectAsState()
     val masterRuangList by viewModel.allRuang.collectAsState()
     val masterStatusList by viewModel.allStatusPenanganan.collectAsState()
     val masterUrgensiList by viewModel.allUrgensi.collectAsState()
@@ -307,6 +311,10 @@ fun DashboardScreen(
 
         item {
             AnalyticsActionPlanRealizationChart(plans = plans)
+        }
+
+        item {
+            AnalyticsSuratMasukChart(suratList = suratList)
         }
 
         // --- 3. Laporan Masuk Terbaru ---
@@ -1220,6 +1228,395 @@ fun ActiveProjectSummaryWidget(
                             }
                         }
                     }
+                }
+            }
+        }
+    }
+}
+
+private enum class PeriodFilter(val label: String) {
+    WEEKLY("Mingguan"),
+    MONTHLY("Bulanan"),
+    YEARLY("Tahunan")
+}
+
+private data class ChartDataPoint(
+    val label: String,
+    val fullLabel: String,
+    val count: Int
+)
+
+private fun parseSuratCalendar(surat: SuratArsip): java.util.Calendar {
+    val cal = java.util.Calendar.getInstance()
+    if (surat.tanggalSurat.isNotBlank()) {
+        try {
+            val dateStr = surat.tanggalSurat.trim()
+            val parts = if (dateStr.contains("-")) dateStr.split("-")
+            else if (dateStr.contains("/")) dateStr.split("/")
+            else emptyList()
+
+            if (parts.size == 3) {
+                if (parts[0].length == 4) {
+                    val y = parts[0].toIntOrNull() ?: 2026
+                    val m = (parts[1].toIntOrNull() ?: 1) - 1
+                    val d = parts[2].toIntOrNull() ?: 1
+                    cal.set(y, m, d, 12, 0, 0)
+                    cal.set(java.util.Calendar.MILLISECOND, 0)
+                    return cal
+                } else if (parts[2].length == 4) {
+                    val d = parts[0].toIntOrNull() ?: 1
+                    val m = (parts[1].toIntOrNull() ?: 1) - 1
+                    val y = parts[2].toIntOrNull() ?: 2026
+                    cal.set(y, m, d, 12, 0, 0)
+                    cal.set(java.util.Calendar.MILLISECOND, 0)
+                    return cal
+                }
+            }
+        } catch (_: Exception) {}
+    }
+    if (surat.timestamp > 0) {
+        cal.timeInMillis = surat.timestamp
+    }
+    return cal
+}
+
+@Composable
+fun AnalyticsSuratMasukChart(
+    suratList: List<SuratArsip>,
+    modifier: Modifier = Modifier
+) {
+    var selectedFilter by remember { mutableStateOf(PeriodFilter.WEEKLY) }
+
+    val suratMasuk = remember(suratList) {
+        suratList.filter { it.jenisSurat.contains("Masuk", ignoreCase = true) }
+    }
+    val suratKeluarCount = remember(suratList) {
+        suratList.count { it.jenisSurat.contains("Keluar", ignoreCase = true) }
+    }
+
+    val chartPoints = remember(suratMasuk, selectedFilter) {
+        val points = mutableListOf<ChartDataPoint>()
+        val calNow = java.util.Calendar.getInstance()
+        val currentYear = calNow.get(java.util.Calendar.YEAR)
+
+        when (selectedFilter) {
+            PeriodFilter.WEEKLY -> {
+                val dayNames = arrayOf("Min", "Sen", "Sel", "Rab", "Kam", "Jum", "Sab")
+                for (i in 6 downTo 0) {
+                    val cal = java.util.Calendar.getInstance()
+                    cal.add(java.util.Calendar.DAY_OF_YEAR, -i)
+                    val y = cal.get(java.util.Calendar.YEAR)
+                    val m = cal.get(java.util.Calendar.MONTH)
+                    val d = cal.get(java.util.Calendar.DAY_OF_MONTH)
+                    val dayOfWeek = cal.get(java.util.Calendar.DAY_OF_WEEK) - 1
+
+                    val count = suratMasuk.count { s ->
+                        val sCal = parseSuratCalendar(s)
+                        sCal.get(java.util.Calendar.YEAR) == y &&
+                        sCal.get(java.util.Calendar.MONTH) == m &&
+                        sCal.get(java.util.Calendar.DAY_OF_MONTH) == d
+                    }
+                    val dayName = dayNames.getOrElse(dayOfWeek) { "Hari" }
+                    val shortLabel = if (i == 0) "Hari ini" else dayName
+                    val fullLabel = "$dayName, $d/${m + 1}"
+                    points.add(ChartDataPoint(shortLabel, fullLabel, count))
+                }
+            }
+            PeriodFilter.MONTHLY -> {
+                val monthNames = arrayOf("Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des")
+                for (m in 0..11) {
+                    val count = suratMasuk.count { s ->
+                        val sCal = parseSuratCalendar(s)
+                        sCal.get(java.util.Calendar.YEAR) == currentYear &&
+                        sCal.get(java.util.Calendar.MONTH) == m
+                    }
+                    points.add(ChartDataPoint(monthNames[m], "Bulan ${monthNames[m]} $currentYear", count))
+                }
+            }
+            PeriodFilter.YEARLY -> {
+                for (y in (currentYear - 4)..currentYear) {
+                    val count = suratMasuk.count { s ->
+                        val sCal = parseSuratCalendar(s)
+                        sCal.get(java.util.Calendar.YEAR) == y
+                    }
+                    points.add(ChartDataPoint("$y", "Tahun $y", count))
+                }
+            }
+        }
+        points
+    }
+
+    val maxVal = remember(chartPoints) {
+        (chartPoints.maxOfOrNull { it.count } ?: 1).coerceAtLeast(1)
+    }
+    val totalPeriodCount = remember(chartPoints) {
+        chartPoints.sumOf { it.count }
+    }
+    val peakPoint = remember(chartPoints) {
+        chartPoints.maxByOrNull { it.count }
+    }
+
+    Surface(
+        shape = RoundedCornerShape(20.dp),
+        color = Color.White,
+        border = androidx.compose.foundation.BorderStroke(1.dp, PastelCardBorder),
+        modifier = modifier.fillMaxWidth()
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            // Header Row with Title & Icon
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                    Box(
+                        modifier = Modifier
+                            .size(36.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(PastelPeach),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.TrendingUp,
+                            contentDescription = null,
+                            tint = PastelPeachDark,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Column {
+                        Text(
+                            text = "Grafik Surat Masuk",
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = TextPrimary
+                        )
+                        Text(
+                            text = "Tren Arsip Surat Masuk Real-Time",
+                            fontSize = 11.sp,
+                            color = TextSecondary
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // Periode Filter Segmented Selector (Mingguan / Bulanan / Tahunan)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(PastelBackground)
+                    .padding(4.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                PeriodFilter.values().forEach { filter ->
+                    val isSelected = filter == selectedFilter
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(9.dp))
+                            .background(if (isSelected) PastelSkyBlueDark else Color.Transparent)
+                            .clickable { selectedFilter = filter }
+                            .padding(vertical = 8.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = filter.label,
+                            fontSize = 12.sp,
+                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                            color = if (isSelected) Color.White else TextSecondary
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            // Summary Badges Box
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(PastelSkyBlueContainer)
+                        .padding(10.dp)
+                ) {
+                    Column {
+                        Text("Total Terdata", fontSize = 11.sp, color = TextSecondary)
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text("$totalPeriodCount Surat", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = PastelSkyBlueDark)
+                    }
+                }
+
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(PastelPeach)
+                        .padding(10.dp)
+                ) {
+                    Column {
+                        Text("Puncak Tertinggi", fontSize = 11.sp, color = TextSecondary)
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = if (peakPoint != null && peakPoint.count > 0) "${peakPoint.count} (${peakPoint.label})" else "0 Surat",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = PastelPeachDark,
+                            maxLines = 1
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Bar Chart Area
+            if (totalPeriodCount == 0 && suratMasuk.isEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(160.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(PastelBackground),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Icon(imageVector = Icons.Default.Info, contentDescription = null, tint = TextSecondary, modifier = Modifier.size(24.dp))
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text("Belum ada data surat masuk untuk periode ini.", fontSize = 12.sp, color = TextSecondary)
+                    }
+                }
+            } else {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(PastelBackground)
+                        .padding(12.dp)
+                ) {
+                    // Y-axis grid guidelines & bars
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(140.dp)
+                    ) {
+                        // Background horizontal grid lines
+                        Column(
+                            modifier = Modifier.fillMaxSize(),
+                            verticalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            repeat(4) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(1.dp)
+                                        .background(Color.White.copy(alpha = 0.8f))
+                                )
+                            }
+                        }
+
+                        // Bar Columns
+                        Row(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(horizontal = 4.dp),
+                            horizontalArrangement = Arrangement.SpaceEvenly,
+                            verticalAlignment = Alignment.Bottom
+                        ) {
+                            chartPoints.forEach { point ->
+                                val heightFraction = if (maxVal > 0) (point.count.toFloat() / maxVal).coerceIn(0.05f, 1f) else 0.05f
+                                val isPeak = point.count > 0 && point.count == maxVal
+
+                                Column(
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.Bottom,
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .fillMaxHeight()
+                                        .padding(horizontal = 2.dp)
+                                ) {
+                                    if (point.count > 0) {
+                                        Text(
+                                            text = "${point.count}",
+                                            fontSize = 10.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = if (isPeak) PastelPeachDark else PastelSkyBlueDark
+                                        )
+                                        Spacer(modifier = Modifier.height(2.dp))
+                                    }
+
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth(0.65f)
+                                            .fillMaxHeight(heightFraction)
+                                            .clip(RoundedCornerShape(topStart = 6.dp, topEnd = 6.dp))
+                                            .background(
+                                                if (point.count == 0) Color.LightGray.copy(alpha = 0.4f)
+                                                else if (isPeak) PastelPeachDark
+                                                else PastelSkyBlueDark
+                                            )
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    // X-axis Labels
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 4.dp),
+                        horizontalArrangement = Arrangement.SpaceEvenly
+                    ) {
+                        chartPoints.forEach { point ->
+                            Text(
+                                text = point.label,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Medium,
+                                color = TextSecondary,
+                                maxLines = 1,
+                                modifier = Modifier.weight(1f),
+                                textAlign = TextAlign.Center
+                            )
+                        }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // Footer info
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Perbandingan: ${suratMasuk.size} Surat Masuk • $suratKeluarCount Surat Keluar",
+                    fontSize = 11.sp,
+                    color = TextSecondary
+                )
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(PastelMintLight)
+                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                ) {
+                    Text(
+                        text = "Real-time Sync",
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = PastelMintDark
+                    )
                 }
             }
         }

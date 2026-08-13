@@ -48,6 +48,54 @@ object SuratExcelHelper {
             .replace("'", "&apos;")
     }
 
+    private fun formatExcelDate(rawVal: String): String {
+        val clean = rawVal.trim().replace(',', '.')
+        if (clean.isBlank()) return ""
+
+        // 1. Check if rawVal is a numeric Excel Serial Date (e.g. "46216", "46216.0")
+        val doubleVal = clean.toDoubleOrNull()
+        if (doubleVal != null && doubleVal in 1000.0..100000.0) {
+            try {
+                // 25569.0 is the number of days between 1900-01-01 and 1970-01-01 in Excel's 1900 date system
+                val utcMillis = Math.round((doubleVal - 25569.0) * 86400.0 * 1000.0)
+                val calendar = java.util.Calendar.getInstance(java.util.TimeZone.getTimeZone("UTC"))
+                calendar.timeInMillis = utcMillis
+                val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.US)
+                sdf.timeZone = java.util.TimeZone.getTimeZone("UTC")
+                return sdf.format(calendar.time)
+            } catch (e: Exception) {
+                // Fallback if conversion fails
+            }
+        }
+
+        // 2. Handle string date formatting if it includes time component or ISO format
+        val dateOnly = if (clean.contains(" ")) clean.substringBefore(" ") else clean
+
+        // If string matches YYYY-MM-DD or YYYY/MM/DD
+        if (dateOnly.matches(Regex("""^\d{4}[-/]\d{1,2}[-/]\d{1,2}$"""))) {
+            val parts = dateOnly.split(Regex("[-/]"))
+            if (parts.size == 3) {
+                val year = parts[0]
+                val month = parts[1].padStart(2, '0')
+                val day = parts[2].padStart(2, '0')
+                return "$year-$month-$day"
+            }
+        }
+
+        // If string matches DD/MM/YYYY or DD-MM-YYYY
+        if (dateOnly.matches(Regex("""^\d{1,2}[-/]\d{1,2}[-/]\d{4}$"""))) {
+            val parts = dateOnly.split(Regex("[-/]"))
+            if (parts.size == 3) {
+                val day = parts[0].padStart(2, '0')
+                val month = parts[1].padStart(2, '0')
+                val year = parts[2]
+                return "$year-$month-$day"
+            }
+        }
+
+        return dateOnly
+    }
+
     // =========================================================================
     // 1. UNDUH TEMPLATE EXCEL (.xlsx)
     // =========================================================================
@@ -65,6 +113,7 @@ object SuratExcelHelper {
   <Default Extension="xml" ContentType="application/xml"/>
   <Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
   <Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+  <Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>
 </Types>"""
             zipOut.write(contentTypes.toByteArray())
             zipOut.closeEntry()
@@ -83,11 +132,39 @@ object SuratExcelHelper {
             val wbRels = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
   <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
+  <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>
 </Relationships>"""
             zipOut.write(wbRels.toByteArray())
             zipOut.closeEntry()
 
-            // 4. xl/workbook.xml
+            // 4. xl/styles.xml
+            zipOut.putNextEntry(ZipEntry("xl/styles.xml"))
+            val stylesXml = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <numFmts count="1">
+    <numFmt numFmtId="49" formatCode="@"/>
+  </numFmts>
+  <fonts count="1">
+    <font><sz val="11"/><name val="Calibri"/></font>
+  </fonts>
+  <fills count="1">
+    <fill><patternFill patternType="none"/></fill>
+  </fills>
+  <borders count="1">
+    <border><left/><right/><top/><bottom/></border>
+  </borders>
+  <cellStyleXfs count="1">
+    <xf numFmtId="0" fontId="0" fillId="0" borderId="0"/>
+  </cellStyleXfs>
+  <cellXfs count="2">
+    <xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>
+    <xf numFmtId="49" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/>
+  </cellXfs>
+</styleSheet>"""
+            zipOut.write(stylesXml.toByteArray())
+            zipOut.closeEntry()
+
+            // 5. xl/workbook.xml
             zipOut.putNextEntry(ZipEntry("xl/workbook.xml"))
             val workbook = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
@@ -98,7 +175,7 @@ object SuratExcelHelper {
             zipOut.write(workbook.toByteArray())
             zipOut.closeEntry()
 
-            // 5. xl/worksheets/sheet1.xml
+            // 6. xl/worksheets/sheet1.xml
             val sheetData = StringBuilder()
             sheetData.append("""<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
@@ -110,14 +187,14 @@ object SuratExcelHelper {
                 cells.forEachIndexed { colIdx, cellValue ->
                     val colLetter = ('A' + colIdx).toString()
                     val cellRef = "$colLetter$rowIdx"
-                    sheetData.append("      <c r=\"$cellRef\" t=\"inlineStr\"><is><t>${escapeXml(cellValue)}</t></is></c>\n")
+                    sheetData.append("      <c r=\"$cellRef\" s=\"1\" t=\"inlineStr\"><is><t>${escapeXml(cellValue)}</t></is></c>\n")
                 }
                 sheetData.append("    </row>\n")
             }
 
             var r = 1
             addRow(r++, listOf("TEMPLATE MASTER IMPOR DATA ARSIP SURAT - SARPRASQ"))
-            addRow(r++, listOf("Petunjuk: Isi data surat di bawah header kolom. Jangan mengubah nama header kolom utama."))
+            addRow(r++, listOf("Petunjuk: Isi data surat di bawah header kolom. Kolom Tanggal Surat diisi dengan format tanggal (contoh: 2026-08-13 atau 13/08/2026). Jangan mengubah nama header kolom utama."))
             addRow(r++, listOf("")) // Baris kosong
 
             // Header Tabel Utama
@@ -125,6 +202,7 @@ object SuratExcelHelper {
                 "Nomor Surat",
                 "Tanggal Surat",
                 "Perihal / Instansi",
+                "Deskripsi Surat",
                 "Jenis Surat",
                 "Status Kelengkapan Arsip"
             ))
@@ -132,8 +210,9 @@ object SuratExcelHelper {
             // Sample Data 1
             addRow(r++, listOf(
                 "015/SRV/VIII/2026",
-                "10/08/2026",
+                "2026-08-10",
                 "Permohonan Pemeliharaan Jaringan Internet Perpus",
+                "Memohon bantuan perbaikan akses Wi-Fi perpustakaan lantai 2 yang mati total.",
                 "Surat Masuk",
                 "Arsip Digital"
             ))
@@ -141,8 +220,9 @@ object SuratExcelHelper {
             // Sample Data 2
             addRow(r++, listOf(
                 "089/SP/SARPRAS/VIII/2026",
-                "11/08/2026",
+                "2026-08-11",
                 "Surat Undangan Rapat Koordinasi Evaluasi Sarpras",
+                "Undangan rapat evaluasi pemeliharaan fasilitas ruang kelas bersama jajaran tim sarpras.",
                 "Surat Keluar",
                 "Arsip Fisik & Digital"
             ))
@@ -150,8 +230,9 @@ object SuratExcelHelper {
             // Sample Data 3
             addRow(r++, listOf(
                 "105/ND-SAR/VIII/2026",
-                "12/08/2026",
+                "2026-08-12",
                 "Nota Dinas Perbaikan Proyektor Lab Komputer",
+                "Pengajuan pengadaan unit proyektor pengganti untuk Lab Komputer 3.",
                 "Nota Dinas",
                 "Arsip Digital"
             ))
@@ -251,7 +332,7 @@ object SuratExcelHelper {
             addRow(r++, listOf("")) // Spacing
 
             // Table Header
-            addRow(r++, listOf("No", "Nomor Surat", "Tanggal Surat", "Perihal / Instansi", "Jenis Surat", "Status Kelengkapan Arsip"))
+            addRow(r++, listOf("No", "Nomor Surat", "Tanggal Surat", "Perihal / Instansi", "Deskripsi Surat", "Jenis Surat", "Status Kelengkapan Arsip"))
 
             suratList.forEachIndexed { idx, item ->
                 addRow(r++, listOf(
@@ -259,6 +340,7 @@ object SuratExcelHelper {
                     item.nomorSurat,
                     item.tanggalSurat,
                     item.perihal,
+                    item.deskripsiSurat,
                     item.jenisSurat,
                     item.statusArsip
                 ))
@@ -324,6 +406,7 @@ object SuratExcelHelper {
             var colNomor = -1
             var colTanggal = -1
             var colPerihal = -1
+            var colDeskripsi = -1
             var colJenis = -1
             var colStatus = -1
 
@@ -333,6 +416,7 @@ object SuratExcelHelper {
                 var foundNomor = -1
                 var foundTanggal = -1
                 var foundPerihal = -1
+                var foundDeskripsi = -1
                 var foundJenis = -1
                 var foundStatus = -1
 
@@ -346,6 +430,9 @@ object SuratExcelHelper {
                         matchesCount++
                     } else if (clean.contains("perihal") || clean.contains("instansi") || clean.contains("judul") || clean.contains("subject")) {
                         foundPerihal = colIdx
+                        matchesCount++
+                    } else if (clean.contains("deskripsi") || clean.contains("keterangan") || clean.contains("rincian") || clean.contains("catatan") || clean.contains("detail")) {
+                        foundDeskripsi = colIdx
                         matchesCount++
                     } else if (clean.contains("jenis") || clean.contains("kategori") || clean.contains("tipe")) {
                         foundJenis = colIdx
@@ -362,6 +449,7 @@ object SuratExcelHelper {
                     colNomor = foundNomor
                     colTanggal = foundTanggal
                     colPerihal = foundPerihal
+                    colDeskripsi = foundDeskripsi
                     colJenis = foundJenis
                     colStatus = foundStatus
                     break
@@ -376,12 +464,13 @@ object SuratExcelHelper {
                     colNomor = 0
                     colTanggal = 1
                     colPerihal = 2
-                    colJenis = 3
-                    colStatus = 4
+                    colDeskripsi = 3
+                    colJenis = 4
+                    colStatus = 5
                 } else {
                     return ParseResult(
                         success = false,
-                        message = "Header kolom Excel tidak sesuai dengan master Arsip Surat (butuh kolom: Nomor Surat, Tanggal, Perihal, Jenis, Status)."
+                        message = "Header kolom Excel tidak sesuai dengan master Arsip Surat (butuh kolom: Nomor Surat, Tanggal, Perihal, Deskripsi, Jenis, Status)."
                     )
                 }
             }
@@ -401,8 +490,10 @@ object SuratExcelHelper {
             for (rowIndex in (headerRowIndex + 1) until rowsList.size) {
                 val rowMap = rowsList[rowIndex]
                 val nomorVal = if (colNomor >= 0) rowMap[colNomor]?.trim() ?: "" else ""
-                val tanggalVal = if (colTanggal >= 0) rowMap[colTanggal]?.trim() ?: "" else ""
+                val rawTanggal = if (colTanggal >= 0) rowMap[colTanggal]?.trim() ?: "" else ""
+                val tanggalVal = formatExcelDate(rawTanggal)
                 val perihalVal = if (colPerihal >= 0) rowMap[colPerihal]?.trim() ?: "" else ""
+                val deskripsiVal = if (colDeskripsi >= 0) rowMap[colDeskripsi]?.trim() ?: "" else ""
                 val jenisVal = if (colJenis >= 0) rowMap[colJenis]?.trim() ?: "" else ""
                 val statusVal = if (colStatus >= 0) rowMap[colStatus]?.trim() ?: "" else ""
 
@@ -422,6 +513,7 @@ object SuratExcelHelper {
                         nomorSurat = finalNomor,
                         tanggalSurat = finalTanggal,
                         perihal = finalPerihal,
+                        deskripsiSurat = deskripsiVal,
                         jenisSurat = finalJenis,
                         statusArsip = finalStatus,
                         timestamp = nowTime - (rowIndex * 100)

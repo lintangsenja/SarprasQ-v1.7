@@ -1008,8 +1008,9 @@ class SarprasRepository(
             SuratArsip(
                 id = 1,
                 nomorSurat = "014/SRV/VII/2026",
-                tanggalSurat = "15/07/2026",
+                tanggalSurat = "2026-07-15",
                 perihal = "Surat Permohonan Bantuan Perbaikan Plafon (Dinas Pendidikan)",
+                deskripsiSurat = "Permohonan anggaran dan perbaikan plafon gedung ruang kelas lantai 2 yang bocor.",
                 jenisSurat = "Keluar",
                 statusArsip = "Arsip Fisik & Digital",
                 timestamp = currentTime - 1000
@@ -1017,8 +1018,9 @@ class SarprasRepository(
             SuratArsip(
                 id = 2,
                 nomorSurat = "088/SP/SARPRAS/VI/2026",
-                tanggalSurat = "20/06/2026",
+                tanggalSurat = "2026-06-20",
                 perihal = "Surat Penawaran Service AC & Maintenance rutin (Vendor PT ColdTech)",
+                deskripsiSurat = "Penawaran paket perawatan berkala untuk 25 unit AC ruang laboratorium dan kantor.",
                 jenisSurat = "Masuk",
                 statusArsip = "Arsip Digital",
                 timestamp = currentTime - 2000
@@ -1026,8 +1028,9 @@ class SarprasRepository(
             SuratArsip(
                 id = 3,
                 nomorSurat = "102/BA-ST/VII/2026",
-                tanggalSurat = "28/07/2026",
+                tanggalSurat = "2026-07-28",
                 perihal = "Berita Acara Serah Terima Pengadaan 10 Unit Proyektor Baru",
+                deskripsiSurat = "Berita acara penerimaan dan verifikasi kelayakan unit proyektor merk Epson.",
                 jenisSurat = "Masuk",
                 statusArsip = "Arsip Fisik & Digital",
                 timestamp = currentTime - 3000
@@ -1035,8 +1038,9 @@ class SarprasRepository(
             SuratArsip(
                 id = 4,
                 nomorSurat = "021/SK-SAR/VIII/2026",
-                tanggalSurat = "01/08/2026",
+                tanggalSurat = "2026-08-01",
                 perihal = "Surat Keputusan Tim Inventarisasi & Pemeliharaan Sarpras Sekolah",
+                deskripsiSurat = "SK penetapan anggota penanggung jawab pemeliharaan sarana dan prasarana sekolah.",
                 jenisSurat = "Keluar",
                 statusArsip = "Arsip Fisik & Digital",
                 timestamp = currentTime - 4000

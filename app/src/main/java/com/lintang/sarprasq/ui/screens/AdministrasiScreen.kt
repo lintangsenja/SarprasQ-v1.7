@@ -999,7 +999,7 @@ fun SuratArchiveTabContent(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            // 1. Unduh Template
+            // 1. Template
             OutlinedButton(
                 onClick = {
                     val result = SuratExcelHelper.generateTemplateXlsx(context)
@@ -1022,14 +1022,14 @@ fun SuratArchiveTabContent(
             ) {
                 Icon(
                     imageVector = Icons.Default.Download,
-                    contentDescription = "Unduh Template",
+                    contentDescription = "Template",
                     modifier = Modifier.size(15.dp)
                 )
                 Spacer(modifier = Modifier.width(4.dp))
-                Text("Unduh Template", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                Text("Template", fontSize = 11.sp, fontWeight = FontWeight.Bold)
             }
 
-            // 2. Impor Excel
+            // 2. Impor
             Button(
                 onClick = {
                     excelPickerLauncher.launch(
@@ -1052,14 +1052,14 @@ fun SuratArchiveTabContent(
             ) {
                 Icon(
                     imageVector = Icons.Default.UploadFile,
-                    contentDescription = "Impor Excel",
+                    contentDescription = "Impor",
                     modifier = Modifier.size(15.dp)
                 )
                 Spacer(modifier = Modifier.width(4.dp))
-                Text("Impor Excel", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                Text("Impor", fontSize = 11.sp, fontWeight = FontWeight.Bold)
             }
 
-            // 3. Ekspor Data
+            // 3. Ekspor
             OutlinedButton(
                 onClick = {
                     if (suratList.isEmpty()) {
@@ -1089,11 +1089,11 @@ fun SuratArchiveTabContent(
             ) {
                 Icon(
                     imageVector = Icons.Default.FileDownload,
-                    contentDescription = "Ekspor Data",
+                    contentDescription = "Ekspor",
                     modifier = Modifier.size(15.dp)
                 )
                 Spacer(modifier = Modifier.width(4.dp))
-                Text("Ekspor Data", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                Text("Ekspor", fontSize = 11.sp, fontWeight = FontWeight.Bold)
             }
         }
 

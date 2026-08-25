@@ -164,37 +164,22 @@ fun ActionPlanScreen(
                 .padding(horizontal = 16.dp, vertical = 12.dp)
         ) {
             // Header
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column {
-                    Text(
-                        text = "Rencana Aksi Sarpras",
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.ExtraBold,
-                        color = TextPrimary
-                    )
-                    Text(
-                        text = "Kelola agenda perbaikan, pengadaan, & perawatan",
-                        fontSize = 12.sp,
-                        color = TextSecondary
-                    )
-                }
-                Button(
-                    onClick = onOpenAddActionPlan,
-                    colors = ButtonDefaults.buttonColors(containerColor = PastelSkyBlueDark),
-                    shape = RoundedCornerShape(12.dp),
-                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
-                ) {
-                    Icon(imageVector = Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text(text = "Tambah", fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                }
+            Column(modifier = Modifier.fillMaxWidth()) {
+                Text(
+                    text = "Rencana Aksi Sarpras",
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = TextPrimary
+                )
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = "Kelola agenda perbaikan, pengadaan, & perawatan",
+                    fontSize = 12.sp,
+                    color = TextSecondary
+                )
             }
 
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(14.dp))
 
             // Stat Summary Cards
             Row(

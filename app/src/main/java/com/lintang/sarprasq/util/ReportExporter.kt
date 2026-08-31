@@ -1,5 +1,6 @@
 package com.lintang.sarprasq.util
 
+import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
 import android.graphics.Canvas
@@ -9,7 +10,9 @@ import android.graphics.RectF
 import android.graphics.Typeface
 import android.graphics.pdf.PdfDocument
 import android.net.Uri
+import android.os.Build
 import android.os.Environment
+import android.provider.MediaStore
 import android.util.Log
 import android.widget.Toast
 import androidx.core.content.FileProvider
@@ -21,7 +24,9 @@ import com.lintang.sarprasq.data.model.Ruang
 import com.lintang.sarprasq.data.model.SuratArsip
 import java.io.ByteArrayOutputStream
 import java.io.File
+import java.io.FileInputStream
 import java.io.FileOutputStream
+import java.io.OutputStream
 import java.text.NumberFormat
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -90,27 +95,102 @@ object ReportExporter {
         context: Context,
         fileName: String,
         mimeType: String,
-        writeContent: (FileOutputStream) -> Unit
+        writeContent: (OutputStream) -> Unit
     ): ExportedFileResult? {
         return try {
-            val downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
-            if (!downloadsDir.exists()) {
-                downloadsDir.mkdirs()
+            // 1. Simpan salinan di cache internal terlebih dahulu untuk memastikan keutuhan berkas
+            val cacheFile = File(context.cacheDir, fileName)
+            if (cacheFile.exists()) {
+                cacheFile.delete()
             }
-            val file = File(downloadsDir, fileName)
-            val fos = FileOutputStream(file)
-            writeContent(fos)
-            fos.flush()
-            fos.close()
+            FileOutputStream(cacheFile).use { fos ->
+                writeContent(fos)
+                fos.flush()
+            }
 
+            var destinationUri: Uri? = null
+            var finalFile: File = cacheFile
+
+            // 2. Gunakan MediaStore API resmi pada Android 10 (API 29) ke atas untuk direktori Downloads
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                try {
+                    val contentValues = ContentValues().apply {
+                        put(MediaStore.Downloads.DISPLAY_NAME, fileName)
+                        put(MediaStore.Downloads.MIME_TYPE, mimeType)
+                        put(MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS + "/SarprasQ")
+                        put(MediaStore.Downloads.IS_PENDING, 1)
+                    }
+                    val resolver = context.contentResolver
+                    val collection = MediaStore.Downloads.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
+                    val insertedUri = resolver.insert(collection, contentValues)
+
+                    if (insertedUri != null) {
+                        resolver.openOutputStream(insertedUri)?.use { outStream ->
+                            FileInputStream(cacheFile).use { inStream ->
+                                inStream.copyTo(outStream)
+                            }
+                            outStream.flush()
+                        }
+                        contentValues.clear()
+                        contentValues.put(MediaStore.Downloads.IS_PENDING, 0)
+                        resolver.update(insertedUri, contentValues, null, null)
+                        destinationUri = insertedUri
+                    }
+                } catch (e: Exception) {
+                    Log.w("ReportExporter", "MediaStore save fallback to local storage", e)
+                }
+            }
+
+            // 3. Fallback jika Android < 29 atau MediaStore tidak tersedia
+            if (destinationUri == null) {
+                try {
+                    val downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+                    if (!downloadsDir.exists()) {
+                        downloadsDir.mkdirs()
+                    }
+                    val publicFile = File(downloadsDir, fileName)
+                    FileInputStream(cacheFile).use { inStream ->
+                        FileOutputStream(publicFile).use { outStream ->
+                            inStream.copyTo(outStream)
+                            outStream.flush()
+                        }
+                    }
+                    finalFile = publicFile
+                } catch (e: Exception) {
+                    Log.w("ReportExporter", "External downloads write error, keeping cached file", e)
+                }
+            }
+
+            // 4. Bangun FileProvider Uri yang aman untuk dibagikan / dibuka aplikasi eksternal
             val authority = "${context.packageName}.fileprovider"
-            val uri: Uri = FileProvider.getUriForFile(context, authority, file)
+            val fileProviderUri = try {
+                FileProvider.getUriForFile(context, authority, finalFile)
+            } catch (e: Exception) {
+                Log.e("ReportExporter", "FileProvider URI resolution error", e)
+                destinationUri ?: Uri.fromFile(finalFile)
+            }
 
-            Toast.makeText(context, "File berhasil disimpan di Downloads:\n$fileName", Toast.LENGTH_SHORT).show()
-            ExportedFileResult(file, uri, mimeType, fileName)
+            val finalResultUri = destinationUri ?: fileProviderUri
+
+            Toast.makeText(
+                context,
+                "✓ File berhasil disimpan ke folder Download:\n$fileName",
+                Toast.LENGTH_LONG
+            ).show()
+
+            ExportedFileResult(
+                file = finalFile,
+                uri = finalResultUri,
+                mimeType = mimeType,
+                fileName = fileName
+            )
         } catch (e: Exception) {
             Log.e("ReportExporter", "Error saving file: ${e.message}", e)
-            Toast.makeText(context, "Gagal mengunduh file: ${e.localizedMessage}", Toast.LENGTH_SHORT).show()
+            Toast.makeText(
+                context,
+                "Gagal mengunduh file: ${e.localizedMessage ?: "Terjadi kesalahan sistem"}",
+                Toast.LENGTH_LONG
+            ).show()
             null
         }
     }
@@ -122,10 +202,19 @@ object ReportExporter {
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }
+            val resInfoList = context.packageManager.queryIntentActivities(intent, 0)
+            for (resolveInfo in resInfoList) {
+                val packageName = resolveInfo.activityInfo.packageName
+                context.grantUriPermission(packageName, uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
             context.startActivity(intent)
         } catch (e: Exception) {
             Log.e("ReportExporter", "Error opening file: ${e.message}", e)
-            Toast.makeText(context, "Tidak ada aplikasi default untuk membuka file ini. Silakan periksa folder Downloads.", Toast.LENGTH_SHORT).show()
+            Toast.makeText(
+                context,
+                "Tidak ada aplikasi default untuk membuka file ini. Berkas telah tersimpan di folder Download.",
+                Toast.LENGTH_LONG
+            ).show()
         }
     }
 
@@ -134,7 +223,13 @@ object ReportExporter {
             val shareIntent = Intent(Intent.ACTION_SEND).apply {
                 type = mimeType
                 putExtra(Intent.EXTRA_STREAM, uri)
+                putExtra(Intent.EXTRA_SUBJECT, fileName)
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            val resInfoList = context.packageManager.queryIntentActivities(shareIntent, 0)
+            for (resolveInfo in resInfoList) {
+                val packageName = resolveInfo.activityInfo.packageName
+                context.grantUriPermission(packageName, uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
             }
             val chooser = Intent.createChooser(shareIntent, "Bagikan $fileName").apply {
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
@@ -142,7 +237,11 @@ object ReportExporter {
             context.startActivity(chooser)
         } catch (e: Exception) {
             Log.e("ReportExporter", "Error sharing file: ${e.message}", e)
-            Toast.makeText(context, "Gagal membagikan file: ${e.localizedMessage}", Toast.LENGTH_SHORT).show()
+            Toast.makeText(
+                context,
+                "Gagal membagikan file: ${e.localizedMessage ?: "Terjadi kesalahan"}",
+                Toast.LENGTH_LONG
+            ).show()
         }
     }
 

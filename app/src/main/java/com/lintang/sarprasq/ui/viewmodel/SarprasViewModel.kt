@@ -27,6 +27,9 @@ import com.lintang.sarprasq.data.model.SuratArsip
 import com.lintang.sarprasq.data.model.UrgensiMaster
 import com.lintang.sarprasq.data.repository.SarprasRepository
 import com.lintang.sarprasq.data.repository.ProfileInfoSync
+import com.lintang.sarprasq.util.firebase.FirebaseFirestoreHelper
+import com.lintang.sarprasq.util.firebase.FirebaseManager
+import com.lintang.sarprasq.util.firebase.FirebaseRealtimeHelper
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -136,6 +139,7 @@ class SarprasViewModel(application: Application) : AndroidViewModel(application)
     val backupHistoryRecords = MutableStateFlow<List<BackupHistoryRecord>>(emptyList())
 
     // --- Cloud Sync & Connection Diagnostic ---
+    val isRealtimeConnected: StateFlow<Boolean> = FirebaseRealtimeHelper.isConnected
     val firebaseConnStatus = MutableStateFlow<FirebaseConnState>(FirebaseConnState.Idle)
     val lastCloudSyncTime = MutableStateFlow(
         prefs.getString("last_cloud_sync_time", "Belum pernah disinkronkan") ?: "Belum pernah disinkronkan"
@@ -231,6 +235,13 @@ class SarprasViewModel(application: Application) : AndroidViewModel(application)
         )
         val current = listOf(newRecord) + backupHistoryRecords.value
         saveBackupHistoryRecords(current)
+    }
+
+    fun checkFirebasePathsHealth(onResult: (FirebaseManager.HealthStatus) -> Unit) {
+        viewModelScope.launch {
+            val status = FirebaseManager.checkPathsHealth()
+            onResult(status)
+        }
     }
 
     // --- Firebase Connection Diagnostic & Cloud Sync ---

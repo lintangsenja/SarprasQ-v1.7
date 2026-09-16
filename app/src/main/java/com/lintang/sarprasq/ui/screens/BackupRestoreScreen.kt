@@ -103,6 +103,7 @@ fun BackupRestoreScreen(
     val firebaseConnStatus by viewModel.firebaseConnStatus.collectAsState()
     val lastSyncTime by viewModel.lastSyncTime.collectAsState()
     val isSyncing by viewModel.isSyncing.collectAsState()
+    val isRealtimeConnected by viewModel.isRealtimeConnected.collectAsState()
     var latestJsonString by remember { mutableStateOf<String?>(null) }
     var previewJsonString by remember { mutableStateOf<String?>(null) }
     var latestFile by remember { mutableStateOf<File?>(null) }
@@ -412,6 +413,25 @@ fun BackupRestoreScreen(
                                         ) {
                                             Text("Status Proyek:", fontSize = 10.sp, color = TextSecondary)
                                             Text("SarprasQ Realtime Database Active", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+                                        }
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween
+                                        ) {
+                                            Text("Live Socket (.info/connected):", fontSize = 10.sp, color = TextSecondary)
+                                            Text(
+                                                if (isRealtimeConnected) "Terhubung (Online)" else "Menyambungkan...",
+                                                fontSize = 10.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = if (isRealtimeConnected) Color(0xFF059669) else Color(0xFFD97706)
+                                            )
+                                        }
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween
+                                        ) {
+                                            Text("Jalur Firestore (CRUD):", fontSize = 10.sp, color = TextSecondary)
+                                            Text("surat_sarpras & rencana_aksi (OK)", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color(0xFF059669))
                                         }
                                         if (status.timestamp.isNotEmpty()) {
                                             Row(

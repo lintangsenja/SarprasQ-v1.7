@@ -34,6 +34,9 @@ import com.lintang.sarprasq.data.model.SuratArsip
 import com.lintang.sarprasq.data.model.UrgensiMaster
 import com.lintang.sarprasq.util.CompressedImageResult
 import com.lintang.sarprasq.util.ImageCompressor
+import com.lintang.sarprasq.util.firebase.FirebaseFirestoreHelper
+import com.lintang.sarprasq.util.firebase.FirebaseManager
+import com.lintang.sarprasq.util.firebase.FirebaseRealtimeHelper
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
@@ -105,22 +108,36 @@ class SarprasRepository(
         }
     }
 
+    private var connectionRef: DatabaseReference? = null
+    private var connectionListener: ValueEventListener? = null
+
     private fun attachRealtimeSyncListeners() {
         try {
-            sarprasRef?.addValueEventListener(object : ValueEventListener {
+            val db = firebaseDb ?: return
+            val connRef = db.getReference(".info/connected")
+            connectionRef = connRef
+            val listener = object : ValueEventListener {
                 override fun onDataChange(snapshot: DataSnapshot) {
-                    isRealtimeListenerActive = true
-                    realtimeListenerError = null
+                    val connected = snapshot.getValue(Boolean::class.java) ?: false
+                    isRealtimeListenerActive = connected
+                    if (connected) {
+                        realtimeListenerError = null
+                        Log.d("SarprasRepository", "Firebase Realtime connection active (.info/connected)")
+                    } else {
+                        Log.d("SarprasRepository", "Firebase Realtime socket disconnected/reconnecting")
+                    }
                 }
 
                 override fun onCancelled(error: DatabaseError) {
                     isRealtimeListenerActive = false
                     realtimeListenerError = error.message
-                    Log.e("SarprasRepository", "Realtime listener cancelled: ${error.message}")
+                    Log.w("SarprasRepository", "Realtime connection listener note: ${error.message}")
                 }
-            })
+            }
+            connectionListener = listener
+            connRef.addValueEventListener(listener)
         } catch (e: Exception) {
-            Log.e("SarprasRepository", "Failed to attach listener: ${e.message}")
+            Log.w("SarprasRepository", "Failed to attach connection listener: ${e.message}")
         }
     }
 
@@ -237,34 +254,30 @@ class SarprasRepository(
     suspend fun deleteActionPlan(plan: ActionPlan) {
         dao.deleteActionPlan(plan)
         try {
-            getDatabaseRef()?.child("action_plans")?.child(plan.id.toString())?.removeValue()
+            FirebaseRealtimeHelper.deleteActionPlan(plan.id)
         } catch (e: Exception) {
             Log.e("SarprasRepository", "Failed to delete ActionPlan from RTDB: ${e.message}")
         }
         try {
-            getFirestoreInstance()?.collection("action_plans")?.document(plan.id.toString())?.delete()
+            FirebaseFirestoreHelper.deleteActionPlan(plan.id)
         } catch (e: Exception) {
             Log.e("SarprasRepository", "Failed to delete ActionPlan from Firestore: ${e.message}")
         }
     }
 
     private fun syncActionPlanToFirebase(plan: ActionPlan) {
-        try {
-            getDatabaseRef()?.child("action_plans")?.child(plan.id.toString())?.setValue(plan)
-                ?.addOnFailureListener { e ->
-                    Log.e("SarprasRepository", "Failed to sync ActionPlan to RTDB: ${e.message}", e)
-                }
-        } catch (e: Exception) {
-            Log.e("SarprasRepository", "Failed to sync ActionPlan to RTDB: ${e.message}", e)
-        }
+        externalScope.launch {
+            try {
+                FirebaseRealtimeHelper.saveActionPlan(plan)
+            } catch (e: Exception) {
+                Log.e("SarprasRepository", "Failed to sync ActionPlan to RTDB: ${e.message}", e)
+            }
 
-        try {
-            getFirestoreInstance()?.collection("action_plans")?.document(plan.id.toString())?.set(plan)
-                ?.addOnFailureListener { e ->
-                    Log.e("SarprasRepository", "Failed to sync ActionPlan to Firestore: ${e.message}", e)
-                }
-        } catch (e: Exception) {
-            Log.e("SarprasRepository", "Failed to sync ActionPlan to Firestore: ${e.message}", e)
+            try {
+                FirebaseFirestoreHelper.saveActionPlan(plan)
+            } catch (e: Exception) {
+                Log.e("SarprasRepository", "Failed to sync ActionPlan to Firestore: ${e.message}", e)
+            }
         }
     }
 
@@ -289,34 +302,30 @@ class SarprasRepository(
     suspend fun deleteSuratArsip(surat: SuratArsip) {
         dao.deleteSuratArsip(surat)
         try {
-            getDatabaseRef()?.child("surat_arsip")?.child(surat.id.toString())?.removeValue()
+            FirebaseRealtimeHelper.deleteSuratArsip(surat.id)
         } catch (e: Exception) {
             Log.e("SarprasRepository", "Failed to delete Surat from RTDB: ${e.message}")
         }
         try {
-            getFirestoreInstance()?.collection("surat_arsip")?.document(surat.id.toString())?.delete()
+            FirebaseFirestoreHelper.deleteSuratArsip(surat.id)
         } catch (e: Exception) {
             Log.e("SarprasRepository", "Failed to delete Surat from Firestore: ${e.message}")
         }
     }
 
     private fun syncSuratToFirebase(surat: SuratArsip) {
-        try {
-            getDatabaseRef()?.child("surat_arsip")?.child(surat.id.toString())?.setValue(surat)
-                ?.addOnFailureListener { e ->
-                    Log.e("SarprasRepository", "Failed to sync Surat to RTDB: ${e.message}", e)
-                }
-        } catch (e: Exception) {
-            Log.e("SarprasRepository", "Failed to sync Surat to RTDB: ${e.message}", e)
-        }
+        externalScope.launch {
+            try {
+                FirebaseRealtimeHelper.saveSuratArsip(surat)
+            } catch (e: Exception) {
+                Log.e("SarprasRepository", "Failed to sync Surat to RTDB: ${e.message}", e)
+            }
 
-        try {
-            getFirestoreInstance()?.collection("surat_arsip")?.document(surat.id.toString())?.set(surat)
-                ?.addOnFailureListener { e ->
-                    Log.e("SarprasRepository", "Failed to sync Surat to Firestore: ${e.message}", e)
-                }
-        } catch (e: Exception) {
-            Log.e("SarprasRepository", "Failed to sync Surat to Firestore: ${e.message}", e)
+            try {
+                FirebaseFirestoreHelper.saveSuratArsip(surat)
+            } catch (e: Exception) {
+                Log.e("SarprasRepository", "Failed to sync Surat to Firestore: ${e.message}", e)
+            }
         }
     }
 
@@ -1319,7 +1328,7 @@ class SarprasRepository(
             projectTasksListenerRegistration = fs.collection("project_tasks")
                 .addSnapshotListener { snapshot, error ->
                     if (error != null) {
-                        Log.e("SarprasRepository", "Firestore project_tasks snapshot listener error: ${error.message}")
+                        Log.w("SarprasRepository", "Firestore project_tasks snapshot listener note: ${error.message}")
                         return@addSnapshotListener
                     }
                     if (snapshot != null && !snapshot.isEmpty) {
@@ -1401,6 +1410,19 @@ class SarprasRepository(
                         onResult(false, "[INIT ERROR] Inisialisasi FirebaseDatabase belum siap / berkas google-services.json tidak valid.", 0)
                     }
                     return@launch
+                }
+
+                // Jalankan pemeriksaan jalur komprehensif pada Firestore dan Realtime Database
+                launch {
+                    try {
+                        val health = FirebaseManager.checkPathsHealth()
+                        Log.i("SarprasRepository", "[FIREBASE DIAGNOSTIC] Path checking summary: ${health.message}")
+                        health.checkedPaths.forEach { (path, ok) ->
+                            Log.d("SarprasRepository", "   -> Path check [$path]: ${if (ok) "VALID & REACHABLE" else "INVALID"}")
+                        }
+                    } catch (e: Exception) {
+                        Log.w("SarprasRepository", "Path diagnostic exception: ${e.message}")
+                    }
                 }
 
                 // Direct real write/ping test on Firebase Realtime Database

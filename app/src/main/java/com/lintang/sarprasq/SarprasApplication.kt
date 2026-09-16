@@ -2,8 +2,8 @@ package com.lintang.sarprasq
 
 import android.app.Application
 import android.util.Log
-import com.google.firebase.FirebaseApp
-import com.google.firebase.database.FirebaseDatabase
+import com.lintang.sarprasq.util.firebase.FirebaseManager
+import com.lintang.sarprasq.util.firebase.FirebaseRealtimeHelper
 
 class SarprasApplication : Application() {
     override fun onCreate() {
@@ -13,19 +13,10 @@ class SarprasApplication : Application() {
 
     private fun initFirebase() {
         try {
-            if (FirebaseApp.getApps(this).isEmpty()) {
-                val app = FirebaseApp.initializeApp(this)
-                Log.i("SarprasApplication", "FirebaseApp initialized successfully: ${app?.name}")
-            } else {
-                Log.i("SarprasApplication", "FirebaseApp already initialized")
-            }
-
-            try {
-                val db = FirebaseDatabase.getInstance("https://sarpras-134d7-default-rtdb.asia-southeast1.firebasedatabase.app")
-                db.setPersistenceEnabled(true)
-                Log.i("SarprasApplication", "FirebaseDatabase persistence enabled for Asia-Southeast1 RTDB")
-            } catch (e: Exception) {
-                Log.w("SarprasApplication", "FirebaseDatabase persistence setup note: ${e.message}")
+            val initialized = FirebaseManager.initialize(this)
+            if (initialized) {
+                FirebaseRealtimeHelper.startConnectionMonitoring()
+                Log.i("SarprasApplication", "FirebaseManager dan Realtime Connection Monitor aktif.")
             }
         } catch (e: Exception) {
             Log.e("SarprasApplication", "FirebaseApp initialization error: ${e.message}", e)
